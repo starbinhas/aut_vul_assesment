@@ -66,3 +66,36 @@ def test_aggressive_refused_when_any_host_is_not_lab() -> None:
     )
     with pytest.raises(ProfileNotAllowedError):
         resolve_profile(msg, LAB_HOSTS)
+
+
+# --- limites por tipo de alvo (laboratório x cliente) ------------------------------------
+
+from scanner.common.config import Settings  # noqa: E402
+from scanner.web_scan.service import resolve_limits  # noqa: E402
+
+
+def _settings() -> Settings:
+    return Settings(
+        web_session_secret="x" * 40,
+        scan_max_requests_per_second=10,
+        scan_threads_per_host=2,
+        scan_lab_max_requests_per_second=100,
+        scan_lab_threads_per_host=10,
+        lab_hosts=LAB_HOSTS,
+    )
+
+
+def test_lab_scope_gets_loose_limits() -> None:
+    limits = resolve_limits(["juice-shop"], _settings())
+    assert limits.max_requests_per_second == 100 and limits.threads_per_host == 10
+
+
+def test_client_scope_keeps_conservative_limits() -> None:
+    limits = resolve_limits(["loja.com.br"], _settings())
+    assert limits.max_requests_per_second == 10 and limits.threads_per_host == 2
+
+
+def test_mixed_scope_falls_back_to_conservative_limits() -> None:
+    # Um host real misturado reprova: nunca acelerar contra produção.
+    limits = resolve_limits(["juice-shop", "loja.com.br"], _settings())
+    assert limits.max_requests_per_second == 10

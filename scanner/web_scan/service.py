@@ -41,6 +41,25 @@ def resolve_profile(msg: StageMessage, lab_hosts: list[str]) -> ScanProfile:
     return profile
 
 
+def resolve_limits(hosts: list[str], settings: Settings) -> ScanLimits:
+    """Limites de laboratório (soltos) só se TODO o escopo é de laboratório; senão, os de cliente.
+
+    Mesma trava do perfil agressivo (`policy.is_lab_scope`): um host real no escopo já reprova e
+    cai nos limites conservadores, para nunca sobrecarregar produção (regra 3 do CLAUDE.md).
+    """
+    if policy.is_lab_scope(hosts, settings.lab_hosts):
+        return ScanLimits(
+            settings.scan_lab_max_duration_minutes,
+            settings.scan_lab_threads_per_host,
+            settings.scan_lab_max_requests_per_second,
+        )
+    return ScanLimits(
+        settings.scan_max_duration_minutes,
+        settings.scan_threads_per_host,
+        settings.scan_max_requests_per_second,
+    )
+
+
 def run_scan(
     zap: ZapScanner,
     msg: StageMessage,
@@ -120,14 +139,19 @@ def handle(
     def progress(phase: str, pct: int | None = None, info: str | None = None) -> None:
         set_scan_status(sessions, msg.scan_id, ScanStatus.WEB_SCANNING, phase, pct, info)
 
+    limits = resolve_limits(msg.scope.allowed_hosts, settings)
+    log.info(
+        "limites do scan",
+        extra={
+            "lab": policy.is_lab_scope(msg.scope.allowed_hosts, settings.lab_hosts),
+            "rps": limits.max_requests_per_second,
+            "threads": limits.threads_per_host,
+        },
+    )
     zap = ZapScanner(
         settings.zap_api_url,
         settings.zap_api_key.get_secret_value(),
-        ScanLimits(
-            settings.scan_max_duration_minutes,
-            settings.scan_threads_per_host,
-            settings.scan_max_requests_per_second,
-        ),
+        limits,
         on_progress=progress,
     )
     progress("starting")

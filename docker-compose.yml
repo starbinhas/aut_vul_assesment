@@ -85,9 +85,10 @@ services:
       - -addoninstall
       - graphql
     environment:
-      JAVA_OPTS: -Xmx${ZAP_JVM_XMX:-3g}
-    mem_limit: 4g
-    cpus: 2
+      JAVA_OPTS: -Xmx${ZAP_JVM_XMX:-6g}
+    # Scan ativo paraleliza entre núcleos; o host tem folga. Ajustável por .env conforme a máquina.
+    mem_limit: ${ZAP_MEM_LIMIT:-8g}
+    cpus: ${ZAP_CPUS:-6}
     # Sem `ports:` — a API do ZAP nunca é publicada no host.
     networks: [internal, egress]
     healthcheck:

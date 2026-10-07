@@ -16,9 +16,15 @@ class Settings(BaseSettings):
     zap_api_url: str = "http://localhost:8080"
     zap_api_key: SecretStr = SecretStr("")
 
+    # Limites para SITE DE CLIENTE: conservadores, para nunca sobrecarregar produção (regra 3).
     scan_max_duration_minutes: int = Field(default=60, ge=1)
     scan_threads_per_host: int = Field(default=2, ge=1, le=5)
     scan_max_requests_per_second: int = Field(default=10, ge=1, le=50)
+    # Limites para LABORATÓRIO: sem cliente para proteger, pode acelerar muito. Aplicados só quando
+    # todo o escopo é de laboratório (mesma trava do perfil agressivo). Tetos bem mais altos.
+    scan_lab_max_duration_minutes: int = Field(default=60, ge=1)
+    scan_lab_threads_per_host: int = Field(default=10, ge=1, le=40)
+    scan_lab_max_requests_per_second: int = Field(default=100, ge=1, le=500)
     # O perfil agressivo (testes que podem causar dano) só roda contra estes hosts.
     # Site de cliente nunca está aqui: a trava garante que o agressivo não o atinge.
     lab_hosts: list[str] = ["juice-shop", "dvwa", "localhost", "127.0.0.1"]
