@@ -14,7 +14,7 @@
     },
     "scan_id": { "type": "string", "minLength": 1 },
     "target_id": { "type": "string", "minLength": 1 },
-    "stage": { "enum": ["web.requested", "candidates", "validated", "report.ready"] },
+    "stage": { "enum": ["recon.requested", "cve.requested", "web.requested", "candidates", "validated", "report.ready"] },
     "scope": { "$ref": "#/$defs/scope" },
     "payload": { "type": "object" }
   },

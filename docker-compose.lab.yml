@@ -17,11 +17,17 @@ services:
   worker-validate:
     networks: [internal, egress, lab]
 
-  # No laboratório só existe a etapa 4 (o nuclei é da etapa 3, de outro colega):
-  # o relatório não espera por ele.
+  # Etapas 2 e 3 (naabu/nuclei) também alcançam os alvos de laboratório.
+  worker-recon:
+    networks: [internal, egress, lab]
+
+  worker-cve:
+    networks: [internal, egress, lab]
+
+  # Agora o laboratório roda etapas 3 (nuclei) e 4 (ZAP): o relatório espera os dois.
   worker-report:
     environment:
-      REPORT_REQUIRED_TOOLS: '["zap"]'
+      REPORT_REQUIRED_TOOLS: '["zap", "nuclei"]'
 
   # Testes de integração: rodam dentro da rede para alcançar os alvos e o ZAP.
   tests:

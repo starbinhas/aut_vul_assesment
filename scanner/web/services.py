@@ -28,6 +28,8 @@ from scanner.common.models import Finding, Outcome, Scope, StageMessage, Status,
 from scanner.common.queue import (
     DEAD_LETTER_SUFFIX,
     STREAM_CANDIDATES,
+    STREAM_CVE_REQUESTED,
+    STREAM_RECON_REQUESTED,
     STREAM_REPORT_READY,
     STREAM_VALIDATED,
     STREAM_WEB_REQUESTED,
@@ -153,10 +155,10 @@ def start_scan(
         destructive=requested.destructive,
     )
     msg = StageMessage(
-        message_id=f"{scan.scan_id}:web.requested",
+        message_id=f"{scan.scan_id}:recon.requested",
         scan_id=scan.scan_id,
         target_id=target.target_id,
-        stage="web.requested",
+        stage="recon.requested",
         scope=scope,
         payload={"profile": requested.name},
     )
@@ -166,7 +168,7 @@ def start_scan(
 
     def publish_committed(_session: Session) -> None:
         try:
-            publish(STREAM_WEB_REQUESTED, msg)
+            publish(STREAM_RECON_REQUESTED, msg)
         except Exception:
             # Já está gravado: sem a mensagem ninguém o processaria e o site ficaria "em andamento"
             # para sempre. Fecha como falha, e a pessoa pode pedir de novo.
@@ -334,6 +336,8 @@ def request_report_regeneration(
 # --- operação (admin) -------------------------------------------------------------------
 
 STREAMS = [
+    (STREAM_RECON_REQUESTED, "recon"),
+    (STREAM_CVE_REQUESTED, "cve"),
     (STREAM_WEB_REQUESTED, "web_scan"),
     (STREAM_CANDIDATES, "validation"),
     (STREAM_VALIDATED, "report"),

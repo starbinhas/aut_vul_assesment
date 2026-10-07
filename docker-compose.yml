@@ -111,6 +111,22 @@ services:
       zap: { condition: service_healthy }
     networks: [internal]
 
+  # Etapa 2 (reconhecimento, naabu) e etapa 3 (CVEs, nuclei): rodam as ferramentas por subprocess,
+  # então precisam de egress (alcançar o alvo). naabu usa scan por conexão (sem root/libpcap bruto).
+  worker-recon:
+    <<: *worker
+    command: ["python", "-m", "scanner.recon"]
+    environment:
+      CONSUMER_NAME: worker-recon-1
+    networks: [internal, egress]
+
+  worker-cve:
+    <<: *worker
+    command: ["python", "-m", "scanner.cve"]
+    environment:
+      CONSUMER_NAME: worker-cve-1
+    networks: [internal, egress]
+
   worker-validate:
     <<: *worker
     command: ["python", "-m", "scanner.validation"]

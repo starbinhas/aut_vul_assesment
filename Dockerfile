@@ -3,10 +3,29 @@ FROM python:3.13-slim AS base
 
 COPY --from=ghcr.io/astral-sh/uv:0.12 /uv /usr/local/bin/uv
 
-# Dependências de sistema do WeasyPrint (PDF) + fonte com acentuação.
+# Dependências de sistema do WeasyPrint (PDF), fonte com acentuação, e libpcap (naabu).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libpango-1.0-0 libpangoft2-1.0-0 fonts-dejavu-core \
+ && apt-get install -y --no-install-recommends \
+    libpango-1.0-0 libpangoft2-1.0-0 fonts-dejavu-core libpcap0.8 ca-certificates curl unzip \
  && rm -rf /var/lib/apt/lists/*
+
+# Ferramentas das etapas 2 e 3 (ProjectDiscovery, binários Go): naabu (recon) e nuclei (CVEs).
+ARG NAABU_VERSION=2.3.3
+ARG NUCLEI_VERSION=3.3.7
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    cd /tmp; \
+    curl -fsSL -o naabu.zip "https://github.com/projectdiscovery/naabu/releases/download/v${NAABU_VERSION}/naabu_${NAABU_VERSION}_linux_${arch}.zip"; \
+    curl -fsSL -o nuclei.zip "https://github.com/projectdiscovery/nuclei/releases/download/v${NUCLEI_VERSION}/nuclei_${NUCLEI_VERSION}_linux_${arch}.zip"; \
+    unzip -o naabu.zip naabu -d /usr/local/bin; \
+    unzip -o nuclei.zip nuclei -d /usr/local/bin; \
+    chmod +x /usr/local/bin/naabu /usr/local/bin/nuclei; \
+    rm -f naabu.zip nuclei.zip
+# Templates do nuclei pré-baixados (dir compartilhado e legível); sem download em tempo de execução.
+ENV NUCLEI_TEMPLATES_DIR=/opt/nuclei-templates
+RUN set -eux; \
+    nuclei -update-templates -templates-directory "$NUCLEI_TEMPLATES_DIR" -disable-update-check || true; \
+    chmod -R a+rX "$NUCLEI_TEMPLATES_DIR" 2>/dev/null || true
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \

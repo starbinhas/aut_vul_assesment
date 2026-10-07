@@ -32,7 +32,7 @@ from sqlalchemy.orm import Session
 from scanner.common.config import get_settings
 from scanner.common.db import Organization, Report, Scan, Target, User, make_session_factory
 from scanner.common.models import Scope, StageMessage
-from scanner.common.queue import STREAM_WEB_REQUESTED, connect, publish
+from scanner.common.queue import STREAM_RECON_REQUESTED, connect, publish
 from scanner.web.security import generate_password, hash_password
 from scanner.web_scan.policy import PROFILES
 
@@ -139,14 +139,14 @@ def start(target: str, profile: str = "safe", login: bool = False) -> None:
     if login:
         payload["credential"] = _lab_login_credential(target)
     msg = StageMessage(
-        message_id=f"{scan_id}:web.requested",
+        message_id=f"{scan_id}:recon.requested",
         scan_id=scan_id,
         target_id=f"lab-{target}",
-        stage="web.requested",
+        stage="recon.requested",
         scope=scope,
         payload=payload,
     )
-    publish(connect(settings.redis_url), STREAM_WEB_REQUESTED, msg)
+    publish(connect(settings.redis_url), STREAM_RECON_REQUESTED, msg)
     extra = " (autenticado)" if login else ""
     print(f"scan disparado: {scan_id} (perfil {profile}){extra}")
 

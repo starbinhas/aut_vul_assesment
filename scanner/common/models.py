@@ -128,7 +128,9 @@ class Scope(_Strict):
     exclude_paths: list[str] = Field(default_factory=list)
 
 
-Stage = Literal["web.requested", "candidates", "validated", "report.ready"]
+Stage = Literal[
+    "recon.requested", "cve.requested", "web.requested", "candidates", "validated", "report.ready"
+]
 
 
 class StageMessage(_Strict):

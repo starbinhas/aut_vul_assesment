@@ -25,7 +25,7 @@ from scanner.common.db import (
     User,
 )
 from scanner.common.models import Status
-from scanner.common.queue import STREAM_VALIDATED, STREAM_WEB_REQUESTED
+from scanner.common.queue import STREAM_RECON_REQUESTED, STREAM_VALIDATED
 from scanner.report.builder import build_report
 from scanner.report.catalog import static_remediation
 from scanner.web import verification
@@ -332,7 +332,7 @@ def test_start_scan_publishes_locked_scope_once(env) -> None:
     r = c.post("/sites/t-a/scans", data={"csrf_token": token})
     assert r.status_code == 303 and r.headers["location"].startswith("/scans/scan-")
     [(stream, msg)] = published
-    assert stream == STREAM_WEB_REQUESTED
+    assert stream == STREAM_RECON_REQUESTED
     assert msg.scope.allowed_hosts == ["loja-a.com.br"] and msg.scope.locked
     # segundo pedido enquanto o primeiro roda: recusado
     r = c.post("/sites/t-a/scans", data={"csrf_token": token})

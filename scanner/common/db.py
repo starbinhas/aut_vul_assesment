@@ -108,12 +108,14 @@ class RemediationCache(Base):
 
 class ScanStatus:
     REQUESTED = "requested"
+    RECON = "recon"
+    CVE_SCANNING = "cve_scanning"
     WEB_SCANNING = "web_scanning"
     VALIDATING = "validating"
     REPORTING = "reporting"
     DONE = "done"
     FAILED = "failed"
-    ACTIVE = (REQUESTED, WEB_SCANNING, VALIDATING, REPORTING)
+    ACTIVE = (REQUESTED, RECON, CVE_SCANNING, WEB_SCANNING, VALIDATING, REPORTING)
 
 
 class Organization(Base):

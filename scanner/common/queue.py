@@ -21,6 +21,8 @@ from scanner.common.models import Stage, StageMessage
 
 log = logging.getLogger(__name__)
 
+STREAM_RECON_REQUESTED = "scan.recon.requested"
+STREAM_CVE_REQUESTED = "scan.cve.requested"
 STREAM_WEB_REQUESTED = "scan.web.requested"
 STREAM_CANDIDATES = "scan.candidates"
 STREAM_VALIDATED = "scan.validated"
