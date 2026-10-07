@@ -71,9 +71,9 @@ PLAN: dict[str, CategoryPlan] = {
     ),
     "A08:2025": CategoryPlan(
         "A08:2025",
-        "planejado",
-        "checagem de desserialização / integridade",
-        "exige sondas específicas e não destrutivas; ainda não construído.",
+        "parcial",
+        "checagem de token sem assinatura (alg:none)",
+        "aceitação de token não assinado detectada (no boletim); desserialização ainda falta.",
     ),
     "A09:2025": CategoryPlan(
         "A09:2025",

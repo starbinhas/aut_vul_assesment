@@ -22,6 +22,7 @@ from scanner.validation.access_probe import AccessProbe, Identity, run_access_pr
 from scanner.validation.auth_checks import MIN_ATTEMPTS, classify_login_protection
 from scanner.validation.exposed_files import SENSITIVE_PATHS, classify_exposure
 from scanner.validation.http import ProbeClient
+from scanner.validation.jwt_integrity import classify_jwt_integrity, decode_payload, unsigned_token
 
 BASE = os.environ.get("LAB_JUICE_SHOP_URL", "http://juice-shop:3000").rstrip("/")
 PASSWORD = "ScannerLab123!"
@@ -137,10 +138,32 @@ def check_login_protection() -> CheckResult:
     return CheckResult("A07:2025", name, v.outcome.value, v.reason)
 
 
+def check_jwt_integrity() -> CheckResult:
+    """A08 — o servidor aceita um token sem assinatura (alg:none). Só leitura de recurso nosso."""
+    name = "aceita token sem assinatura"
+    try:
+        _register("scanner-owner@lab.local")
+        auth = _login("scanner-owner@lab.local")
+        token, bid = str(auth["token"]), auth["bid"]
+        forged = unsigned_token(decode_payload(token))
+        tampered = token.rsplit(".", 1)[0] + ".assinatura-invalida"
+        resource = f"{BASE}/rest/basket/{bid}"
+
+        def status(tok: str) -> int:
+            r = httpx.get(resource, headers={"Authorization": f"Bearer {tok}"}, timeout=15)
+            return r.status_code
+
+        v = classify_jwt_integrity(unsigned_status=status(forged), control_status=status(tampered))
+        return CheckResult("A08:2025", name, v.outcome.value, v.reason)
+    except (httpx.HTTPError, KeyError, ValueError) as exc:
+        return CheckResult("A08:2025", name, "error", f"checagem falhou: {exc}")
+
+
 CHECKS: list[Callable[[], CheckResult]] = [
     check_access_control,
     check_exposed_files,
     check_login_protection,
+    check_jwt_integrity,
 ]
 
 
