@@ -57,6 +57,7 @@ class CategoryCoverage:
     target_weaknesses: int = 0  # desafios do Juice Shop nesta categoria
     our_findings: int = 0  # achados nossos (abertos) nesta categoria
     our_confirmed: int = 0  # destes, confirmados/prováveis por prova determinística
+    check: str = ""  # veredito de uma checagem proativa nossa (acesso, arquivos, etc.)
     unmapped_target: list[str] = field(default_factory=list)
 
 
@@ -114,27 +115,41 @@ def measure(scan_id: str) -> list[CategoryCoverage]:
         cov[code].our_findings += 1
         if f.status in CONFIRMED:
             cov[code].our_confirmed += 1
+
+    # Checagens proativas (as que o ZAP não faz): acesso entre usuários, arquivos expostos, etc.
+    from tests.lab_checks import run_all
+
+    for res in run_all():
+        if res.owasp in cov:
+            cov[res.owasp].check = res.outcome
     return [cov[code] for code in sorted(cov)]
 
 
 def _print(rows: list[CategoryCoverage], scan_id: str) -> None:
     has_target = any(r.target_weaknesses for r in rows)
     print(f"\nCobertura do scan {scan_id} (OWASP Top 10:2025)\n")
-    header = f"{'Categoria':<42}{'Alvo':>6}{'Achados':>9}{'Conf.':>7}  {'Estado':<10}"
+    header = (
+        f"{'Categoria':<42}{'Alvo':>6}{'Achados':>9}{'Conf.':>7}  {'Estado':<10}{'Checagem':<12}"
+    )
     print(header)
     print("-" * len(header))
     touched_target = 0
     categories_with_target = 0
     for r in rows:
+        detected = r.our_findings > 0 or r.check == "confirmed"
         if r.target_weaknesses:
             categories_with_target += 1
-            if r.our_findings:
+            if detected:
                 touched_target += 1
         alvo = str(r.target_weaknesses) if r.target_weaknesses else "·"
         plan = plan_for(r.owasp)
         estado = plan.status if plan else ""
+        check = {"confirmed": "CONFIRMADO", "false_positive": "ok", "error": "erro"}.get(
+            r.check, r.check
+        )
         print(
-            f"{r.owasp} {r.name:<36}{alvo:>6}{r.our_findings:>9}{r.our_confirmed:>7}  {estado:<10}"
+            f"{r.owasp} {r.name:<36}{alvo:>6}{r.our_findings:>9}{r.our_confirmed:>7}  "
+            f"{estado:<10}{check:<12}"
         )
     print("-" * len(header))
     if has_target:
