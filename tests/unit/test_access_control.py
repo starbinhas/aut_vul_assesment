@@ -45,3 +45,38 @@ def test_redirect_to_login_is_unconfirmed_not_confirmed() -> None:
     other = resp("", status=302, headers={"location": "/login"})
     v = classify_access(URL, owner, other, MARKER)
     assert v.outcome is Outcome.UNCONFIRMED
+
+
+# --- orquestração (run_access_probe) -----------------------------------------------------
+
+from scanner.validation.access_probe import AccessProbe, Identity, run_access_probe  # noqa: E402
+from tests.conftest import FakeClient  # noqa: E402
+
+OWNER = Identity("Authorization", "Bearer owner-token")
+OTHER = Identity("Authorization", "Bearer other-token")
+PROBE = AccessProbe(resource_url=URL, owner_marker=MARKER)
+
+
+def test_probe_injects_each_identity_header() -> None:
+    seen = []
+
+    def responder(url):
+        return resp(f'{{"d":"{MARKER}"}}', status=200)
+
+    class RecordingClient(FakeClient):
+        def request(self, method, url, headers=None):
+            seen.append(headers)
+            return super().request(method, url, headers)
+
+    run_access_probe(PROBE, OWNER, OTHER, RecordingClient(responder))
+    assert seen == [OWNER.as_header(), OTHER.as_header()]
+
+
+def test_probe_confirms_leak_end_to_end() -> None:
+    client = FakeClient(lambda url: resp(f'{{"d":"{MARKER}"}}', status=200))
+    v = run_access_probe(PROBE, OWNER, OTHER, client)
+    assert v.outcome is Outcome.CONFIRMED
+
+
+def test_token_is_not_in_identity_repr() -> None:
+    assert "owner-token" not in repr(OWNER)
