@@ -47,9 +47,9 @@ PLAN: dict[str, CategoryPlan] = {
     ),
     "A04:2025": CategoryPlan(
         "A04:2025",
-        "planejado",
+        "parcial",
         "sonda de arquivos/dados sensíveis expostos",
-        "exposição de arquivos (ex.: /ftp, backups) é automatizável; cripto fraca é manual.",
+        "detecção de arquivos expostos pronta (no boletim); cripto fraca continua manual.",
     ),
     "A05:2025": CategoryPlan(
         "A05:2025",

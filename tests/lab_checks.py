@@ -19,6 +19,7 @@ import httpx
 from scanner.common.models import Scope
 from scanner.common.scope import ScopeGuard
 from scanner.validation.access_probe import AccessProbe, Identity, run_access_probe
+from scanner.validation.exposed_files import SENSITIVE_PATHS, classify_exposure
 from scanner.validation.http import ProbeClient
 
 BASE = os.environ.get("LAB_JUICE_SHOP_URL", "http://juice-shop:3000").rstrip("/")
@@ -93,8 +94,31 @@ def check_access_control() -> CheckResult:
         return CheckResult("A01:2025", name, "error", f"checagem falhou: {exc}")
 
 
+def check_exposed_files() -> CheckResult:
+    """A04 — arquivos sensíveis acessíveis sem autenticação (só leitura)."""
+    name = "arquivos sensíveis expostos"
+    client = ProbeClient(ScopeGuard(_scope()), max_rps=10)
+    exposed: list[str] = []
+    try:
+        for path in SENSITIVE_PATHS:
+            url = f"{BASE}{path}"
+            v = classify_exposure(path, url, client.request("GET", url))
+            if v.outcome.value == "confirmed":
+                exposed.append(path)
+    except httpx.HTTPError as exc:
+        return CheckResult("A04:2025", name, "error", f"checagem falhou: {exc}")
+    finally:
+        client.close()
+    if exposed:
+        return CheckResult(
+            "A04:2025", name, "confirmed", f"acessível sem autenticação: {', '.join(exposed)}"
+        )
+    return CheckResult("A04:2025", name, "unconfirmed", "nenhum arquivo sensível conhecido exposto")
+
+
 CHECKS: list[Callable[[], CheckResult]] = [
     check_access_control,
+    check_exposed_files,
 ]
 
 
