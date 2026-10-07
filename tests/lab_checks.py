@@ -19,6 +19,7 @@ import httpx
 from scanner.common.models import Scope
 from scanner.common.scope import ScopeGuard
 from scanner.validation.access_probe import AccessProbe, Identity, run_access_probe
+from scanner.validation.auth_checks import MIN_ATTEMPTS, classify_login_protection
 from scanner.validation.exposed_files import SENSITIVE_PATHS, classify_exposure
 from scanner.validation.http import ProbeClient
 
@@ -116,9 +117,30 @@ def check_exposed_files() -> CheckResult:
     return CheckResult("A04:2025", name, "unconfirmed", "nenhum arquivo sensível conhecido exposto")
 
 
+def check_login_protection() -> CheckResult:
+    """A07 — o login não bloqueia após senhas erradas (força bruta). Conta de teste dedicada."""
+    name = "autenticação sem bloqueio de login"
+    email = "scanner-brute@lab.local"
+    _register(email)
+    statuses: list[int] = []
+    try:
+        for i in range(MIN_ATTEMPTS + 1):
+            r = httpx.post(
+                f"{BASE}/rest/user/login",
+                json={"email": email, "password": f"errada-{i}"},
+                timeout=15,
+            )
+            statuses.append(r.status_code)
+    except httpx.HTTPError as exc:
+        return CheckResult("A07:2025", name, "error", f"checagem falhou: {exc}")
+    v = classify_login_protection(statuses)
+    return CheckResult("A07:2025", name, v.outcome.value, v.reason)
+
+
 CHECKS: list[Callable[[], CheckResult]] = [
     check_access_control,
     check_exposed_files,
+    check_login_protection,
 ]
 
 

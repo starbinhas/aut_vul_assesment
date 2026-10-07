@@ -65,9 +65,9 @@ PLAN: dict[str, CategoryPlan] = {
     ),
     "A07:2025": CategoryPlan(
         "A07:2025",
-        "planejado",
-        "sondas de autenticação (bloqueio de login, sessão)",
-        "falta de bloqueio e falhas de sessão são testáveis; senha fraca em parte é manual.",
+        "parcial",
+        "sonda de bloqueio de login (força bruta)",
+        "ausência de bloqueio no login detectada (no boletim); senha fraca/sessão ainda faltam.",
     ),
     "A08:2025": CategoryPlan(
         "A08:2025",
