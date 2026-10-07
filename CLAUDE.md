@@ -10,9 +10,10 @@ acionável. O fluxo completo tem 7 etapas (ver `docs/processo-scan-etapa-por-eta
 1 Autorização → 2 Reconhecimento (naabu) → 3 CVEs (nuclei) → **4 Web (OWASP ZAP)** →
 **5 Validação** → **6 Relatório + LLM** → 7 Recorrência
 
-**Este repositório cobre as etapas 4, 5 e 6 e a interface web** (área do cliente e área admin).
-As etapas 1–3 e 7 são de outros membros do time; falamos com elas só pelo contrato de dados (ver
-"Contrato entre etapas").
+**Este repositório está se tornando o pipeline inteiro.** Já cobre a **etapa 1 (Autorização, via
+interface)**, as etapas **4, 5 e 6** e a interface web (cliente e admin). As etapas **2
+(Reconhecimento), 3 (CVEs) e 7 (Recorrência) estão sendo integradas** aqui (decisão de trazer tudo
+para este projeto). O contrato entre etapas continua valendo internamente (ver "Contrato entre etapas").
 
 ## Regras que nunca podem ser quebradas
 
@@ -154,9 +155,10 @@ Mensagens em Redis Streams, payload JSON, independente de linguagem (os colegas 
   passa por este repositório.
 - Os nomes dos streams acima são os oficiais.
 
-> **Pendente de alinhar com o time:** formato exato do escopo que vem da etapa 1; quem verifica o
-> domínio (hoje a tela de sites faz a checagem DNS TXT); quem dispara as etapas 2/3 quando o cliente
-> inicia um scan (hoje a interface publica só `scan.web.requested`).
+> **Etapa 1 é nossa (via interface):** a verificação de domínio (DNS TXT, `web/verification.py`) e a
+> trava de escopo são a etapa 1. **A integrar:** ao iniciar um scan, a etapa 1 deve disparar o
+> pipeline completo (hoje publica só `scan.web.requested`; faltam `2 recon` e `3 CVEs` à frente).
+> Achados das nossas checagens próprias usam `source.tool = "scanner"` (contrato 1.1).
 
 ## LLM (etapa 6)
 

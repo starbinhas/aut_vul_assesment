@@ -14,7 +14,8 @@ from urllib.parse import urlsplit, urlunsplit
 
 from pydantic import BaseModel, ConfigDict, Field
 
-SCHEMA_VERSION: Literal["1.0"] = "1.0"
+# 1.1: adiciona a fonte "scanner" (checagens próprias: acesso entre usuários, arquivos, etc.).
+SCHEMA_VERSION: Literal["1.0", "1.1"] = "1.1"
 
 
 class _Strict(BaseModel):
@@ -49,7 +50,7 @@ class Outcome(StrEnum):
 
 
 class Source(_Strict):
-    tool: Literal["nuclei", "zap"]
+    tool: Literal["nuclei", "zap", "scanner"]
     rule_id: str
     rule_name: str | None = None
     tool_severity: str | None = None
@@ -89,7 +90,7 @@ class Location(_Strict):
 
 
 class Finding(_Strict):
-    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    schema_version: Literal["1.0", "1.1"] = SCHEMA_VERSION
     finding_id: str = Field(pattern=r"^[0-9a-f]{64}$")
     scan_id: str = Field(min_length=1)
     target_id: str = Field(min_length=1)
@@ -131,7 +132,7 @@ Stage = Literal["web.requested", "candidates", "validated", "report.ready"]
 
 
 class StageMessage(_Strict):
-    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    schema_version: Literal["1.0", "1.1"] = SCHEMA_VERSION
     message_id: str
     scan_id: str = Field(min_length=1)
     target_id: str = Field(min_length=1)

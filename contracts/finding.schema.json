@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://scanner.internal/contracts/finding.schema.json",
   "title": "Finding",
-  "description": "Achado de segurança trocado entre as etapas 3, 4, 5 e 6. Fonte da verdade do contrato. Mudança aqui = combinar com o time + incrementar schema_version.",
+  "description": "Achado de segurança trocado entre as etapas do pipeline. Fonte da verdade do contrato. Mudança aqui = incrementar schema_version (1.1 adiciona a fonte 'scanner').",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -10,7 +10,7 @@
     "severity", "status", "location", "evidence"
   ],
   "properties": {
-    "schema_version": { "const": "1.0" },
+    "schema_version": { "enum": ["1.0", "1.1"] },
     "finding_id": {
       "type": "string",
       "description": "Determinístico: sha256 de scan_id + fonte + regra + método + URL normalizada + parâmetro. Garante idempotência.",
@@ -64,7 +64,7 @@
       "additionalProperties": false,
       "required": ["tool", "rule_id"],
       "properties": {
-        "tool": { "enum": ["nuclei", "zap"] },
+        "tool": { "enum": ["nuclei", "zap", "scanner"] },
         "rule_id": { "type": "string", "description": "ID do plugin do ZAP ou do template do nuclei." },
         "rule_name": { "type": ["string", "null"] },
         "tool_severity": { "type": ["string", "null"], "description": "Severidade original da ferramenta." }

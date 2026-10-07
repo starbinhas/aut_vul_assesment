@@ -1,6 +1,7 @@
 """Cadastro de site e prova de que o domínio é do cliente (registro DNS TXT).
 
-PROVISÓRIO até alinhar com a etapa 1 (dona da autorização): a etapa 1 pode assumir esta checagem.
+Esta é a ETAPA 1 (Autorização) do pipeline: verifica a posse do domínio e, no início do scan,
+trava o escopo. Nenhum scan roda sem passar por aqui (regra 1).
 """
 
 from __future__ import annotations
