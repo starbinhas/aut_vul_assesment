@@ -56,6 +56,17 @@ LAB_TARGETS: dict[str, Scope] = {
 }
 
 
+# Credenciais de teste do laboratório (registradas no próprio alvo). Só laboratório: nunca um alvo real.
+LAB_LOGIN: dict[str, dict[str, str]] = {
+    "juice-shop": {
+        "login_url": "http://juice-shop:3000/rest/user/login",
+        "register_url": "http://juice-shop:3000/api/Users",
+        "email": "scanner-test@lab.local",
+        "password": "ScannerLab123!",
+    },
+}
+
+
 LAB_ORG = "org-laboratorio"
 
 
@@ -106,7 +117,7 @@ def seed() -> None:
     print("\n".join(lines))
 
 
-def start(target: str, profile: str = "safe") -> None:
+def start(target: str, profile: str = "safe", login: bool = False) -> None:
     settings = get_settings()
     scope = LAB_TARGETS[target]
     scan_id = f"lab-{target}-{uuid.uuid4().hex[:8]}"
@@ -124,16 +135,50 @@ def start(target: str, profile: str = "safe") -> None:
                 requested_by="laboratorio",
             )
         )
+    payload: dict[str, object] = {"profile": profile}
+    if login:
+        payload["credential"] = _lab_login_credential(target)
     msg = StageMessage(
         message_id=f"{scan_id}:web.requested",
         scan_id=scan_id,
         target_id=f"lab-{target}",
         stage="web.requested",
         scope=scope,
-        payload={"profile": profile},
+        payload=payload,
     )
     publish(connect(settings.redis_url), STREAM_WEB_REQUESTED, msg)
-    print(f"scan disparado: {scan_id} (perfil {profile})")
+    extra = " (autenticado)" if login else ""
+    print(f"scan disparado: {scan_id} (perfil {profile}){extra}")
+
+
+def _lab_login_credential(target: str) -> dict[str, str]:
+    """Garante o usuário de teste no alvo de laboratório e devolve a credencial de login.
+
+    Registrar o usuário é passo de laboratório (o alvo é vulnerável de propósito). Em produção, a
+    credencial vem por referência a um cofre — pendente de alinhar com o time.
+    """
+    import httpx
+
+    if target not in LAB_LOGIN:
+        sys.exit(f"sem credencial de laboratório para {target}")
+    cfg = LAB_LOGIN[target]
+    body = {
+        "email": cfg["email"],
+        "password": cfg["password"],
+        "passwordRepeat": cfg["password"],
+        "securityQuestion": {"id": 1},
+        "securityAnswer": "lab",
+    }
+    try:
+        httpx.post(cfg["register_url"], json=body, timeout=15)  # 2xº: já existe, tudo bem
+    except httpx.HTTPError as exc:
+        print(f"aviso: registro do usuário de teste falhou ({exc}); tentando login mesmo assim")
+    return {
+        "type": "login",
+        "login_url": cfg["login_url"],
+        "email": cfg["email"],
+        "password": cfg["password"],
+    }
 
 
 def report(scan_id: str) -> None:
@@ -157,6 +202,9 @@ def main() -> None:
     start_cmd.add_argument(
         "--profile", choices=sorted(PROFILES), default="safe", help="nível de scan (padrão: safe)"
     )
+    start_cmd.add_argument(
+        "--login", action="store_true", help="scan autenticado (usuário de teste do laboratório)"
+    )
     sub.add_parser("report").add_argument("scan_id")
     sub.add_parser("coverage").add_argument("scan_id")
     sub.add_parser("seed")
@@ -164,7 +212,7 @@ def main() -> None:
     if args.cmd == "seed":
         seed()
     elif args.cmd == "start":
-        start(args.target, args.profile)
+        start(args.target, args.profile, args.login)
     elif args.cmd == "coverage":
         from tests.lab_coverage import coverage
 

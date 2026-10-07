@@ -99,3 +99,34 @@ def test_mixed_scope_falls_back_to_conservative_limits() -> None:
     # Um host real misturado reprova: nunca acelerar contra produção.
     limits = resolve_limits(["juice-shop", "loja.com.br"], _settings())
     assert limits.max_requests_per_second == 10
+
+
+# --- parsing de credencial ---------------------------------------------------------------
+
+from scanner.web_scan.service import _credential  # noqa: E402
+from scanner.web_scan.zap import HeaderCredential, LoginCredential  # noqa: E402
+
+
+def test_credential_header() -> None:
+    c = _credential({"credential": {"type": "header", "name": "Cookie", "value": "x"}})
+    assert isinstance(c, HeaderCredential) and c.name == "Cookie"
+
+
+def test_credential_login() -> None:
+    c = _credential(
+        {
+            "credential": {
+                "type": "login",
+                "login_url": "http://juice-shop:3000/rest/user/login",
+                "email": "a@b.c",
+                "password": "p",
+            }
+        }
+    )
+    assert isinstance(c, LoginCredential) and c.email == "a@b.c"
+
+
+def test_credential_none_and_unknown() -> None:
+    assert _credential({}) is None
+    with pytest.raises(ValueError):
+        _credential({"credential": {"type": "mágico"}})

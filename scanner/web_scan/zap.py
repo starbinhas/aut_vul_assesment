@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlsplit
 
 from zapv2 import ZAPv2
 
@@ -51,6 +53,64 @@ class HeaderCredential:
 
     name: str
     value: str = field(repr=False)
+
+
+@dataclass
+class LoginCredential:
+    """Faz login no alvo (pelo ZAP) e injeta o token obtido como cabeçalho.
+
+    Para alvos que autenticam por token em JSON (ex.: Juice Shop:
+    POST /rest/user/login -> {"authentication": {"token": "..."}}). O login é feito pelo ZAP,
+    não pelo worker: só o ZAP tem saída para o alvo. A senha nunca aparece em log nem em repr.
+    """
+
+    login_url: str
+    email: str
+    password: str = field(repr=False)
+    token_path: tuple[str, ...] = ("authentication", "token")
+    header_name: str = "Authorization"
+    header_template: str = "Bearer {token}"  # {token} é substituído pelo valor extraído
+
+
+def extract_token(body: dict[str, Any], path: tuple[str, ...]) -> str:
+    """Segue um caminho de chaves no JSON de resposta e devolve o token (texto não vazio)."""
+    cur: Any = body
+    for key in path:
+        if not isinstance(cur, dict) or key not in cur:
+            raise ZapError(
+                f"token não encontrado no caminho '{'.'.join(path)}' da resposta de login"
+            )
+        cur = cur[key]
+    if not isinstance(cur, str) or not cur:
+        raise ZapError("token de login vazio ou não é texto")
+    return cur
+
+
+def build_login_request(spec: LoginCredential) -> str:
+    """Requisição HTTP crua de login para o ZAP enviar (POST JSON com e-mail e senha)."""
+    payload = json.dumps({"email": spec.email, "password": spec.password})
+    host = urlsplit(spec.login_url).netloc
+    return (
+        f"POST {spec.login_url} HTTP/1.1\r\n"
+        f"Host: {host}\r\n"
+        f"Content-Type: application/json\r\n"
+        f"Content-Length: {len(payload.encode())}\r\n\r\n"
+        f"{payload}"
+    )
+
+
+def login_response_body(sent: Any) -> str:
+    """Corpo da resposta devolvida por core.send_request (lista de mensagens ou dict).
+
+    Em erro, o ZAP devolve uma string (ex.: 'mode_violation' quando a URL de login está fora do
+    escopo do contexto): repassamos o motivo para o log, sem ficar com um erro genérico.
+    """
+    if isinstance(sent, str):
+        raise ZapError(f"ZAP recusou o login: {sent}")
+    msg = sent[-1] if isinstance(sent, list) and sent else sent
+    if not isinstance(msg, dict):
+        raise ZapError("resposta de login inesperada do ZAP")
+    return msg.get("responseBody", "") or ""
 
 
 class ZapScanner:
@@ -154,6 +214,24 @@ class ZapScanner:
                         s["id"], strength, scanpolicyname=policy.POLICY_NAME
                     )
         log.info("política configurada", extra={"profile": profile.name})
+
+    def login(self, spec: LoginCredential) -> HeaderCredential:
+        """Autentica no alvo pelo ZAP e devolve o cabeçalho com o token, para injetar no scan.
+
+        O ZAP faz o POST de login (só ele tem saída para o alvo); extraímos o token do JSON e
+        montamos o cabeçalho. Limitação: se o token expirar no meio do scan, não há reautenticação
+        automática (área logada exige scan dentro do tempo de validade do token).
+        """
+        sent = self.zap.core.send_request(build_login_request(spec), followredirects=True)
+        try:
+            body = json.loads(login_response_body(sent))
+        except (json.JSONDecodeError, TypeError) as exc:
+            raise ZapError("resposta de login não é JSON válido") from exc
+        token = extract_token(body, spec.token_path)
+        log.info("login efetuado", extra={"header": spec.header_name})
+        return HeaderCredential(
+            name=spec.header_name, value=spec.header_template.format(token=token)
+        )
 
     def set_credential(self, cred: HeaderCredential) -> None:
         """Injeta a credencial em toda requisição do ZAP (regra do add-on Replacer)."""

@@ -78,3 +78,73 @@ def test_aggressive_profile_enables_every_rule() -> None:
     # Inclui as destrutivas (30001 overflow, 40043 Log4Shell, 40046 SSRF).
     assert {"30001", "40043", "40046"} <= ascan.enabled
     assert ascan.strengths["30001"] == "HIGH"
+
+
+# --- login (autenticação pelo ZAP) -------------------------------------------------------
+
+from scanner.web_scan.zap import (  # noqa: E402
+    HeaderCredential,
+    LoginCredential,
+    build_login_request,
+    extract_token,
+    login_response_body,
+)
+
+LOGIN = LoginCredential(
+    login_url="http://juice-shop:3000/rest/user/login",
+    email="scanner@lab.local",
+    password="s3nha-secreta",
+)
+
+
+def test_extract_token_follows_path() -> None:
+    body = {"authentication": {"token": "abc.def.ghi", "umail": "x"}}
+    assert extract_token(body, ("authentication", "token")) == "abc.def.ghi"
+
+
+def test_extract_token_missing_raises() -> None:
+    with pytest.raises(ZapError):
+        extract_token({"authentication": {}}, ("authentication", "token"))
+
+
+def test_extract_token_empty_raises() -> None:
+    with pytest.raises(ZapError):
+        extract_token({"authentication": {"token": ""}}, ("authentication", "token"))
+
+
+def test_build_login_request_is_well_formed() -> None:
+    raw = build_login_request(LOGIN)
+    assert raw.startswith("POST http://juice-shop:3000/rest/user/login HTTP/1.1")
+    assert "Host: juice-shop:3000" in raw
+    assert "Content-Type: application/json" in raw
+    assert '"email": "scanner@lab.local"' in raw
+
+
+def test_password_never_in_repr() -> None:
+    # Dado sensível: a senha não pode vazar em log nem em repr do objeto.
+    assert "s3nha-secreta" not in repr(LOGIN)
+
+
+def test_login_response_body_takes_last_message() -> None:
+    sent = [{"responseBody": "{}"}, {"responseBody": '{"authentication":{"token":"t"}}'}]
+    assert '"token":"t"' in login_response_body(sent)
+
+
+def test_login_response_body_raises_on_zap_error_string() -> None:
+    with pytest.raises(ZapError, match="mode_violation"):
+        login_response_body("mode_violation")
+
+
+def test_zap_login_returns_header_credential() -> None:
+    captured = {}
+
+    def send_request(raw, followredirects):
+        captured["raw"] = raw
+        return [{"responseBody": '{"authentication":{"token":"JWT123"}}'}]
+
+    z = ZapScanner.__new__(ZapScanner)
+    z.zap = SimpleNamespace(core=SimpleNamespace(send_request=send_request))
+    cred = z.login(LOGIN)
+    assert isinstance(cred, HeaderCredential)
+    assert cred.name == "Authorization" and cred.value == "Bearer JWT123"
+    assert "scanner@lab.local" in captured["raw"]

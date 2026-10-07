@@ -17,7 +17,13 @@ from scanner.common.scope import ScopeGuard
 from scanner.web_scan import policy
 from scanner.web_scan.alerts import alert_to_finding
 from scanner.web_scan.policy import ScanProfile
-from scanner.web_scan.zap import HeaderCredential, ScanLimits, ScanTimeoutError, ZapScanner
+from scanner.web_scan.zap import (
+    HeaderCredential,
+    LoginCredential,
+    ScanLimits,
+    ScanTimeoutError,
+    ZapScanner,
+)
 
 log = logging.getLogger(__name__)
 
@@ -64,7 +70,7 @@ def run_scan(
     zap: ZapScanner,
     msg: StageMessage,
     scope_routes: list[str],
-    credential: HeaderCredential | None,
+    credential: HeaderCredential | LoginCredential | None,
     profile: ScanProfile,
 ) -> list[Finding]:
     guard = ScopeGuard(msg.scope)
@@ -72,7 +78,10 @@ def run_scan(
     context_name, context_id = zap.create_context(msg.scan_id, msg.scope)
     zap.configure_limits()
     zap.configure_policy(profile)
-    if credential:
+    if isinstance(credential, LoginCredential):
+        # Login do tipo "login": o ZAP autentica e nos devolve o cabeçalho com o token.
+        credential = zap.login(credential)
+    if credential is not None:
         zap.set_credential(credential)
 
     timed_out = False
@@ -105,13 +114,25 @@ def run_scan(
     return list(findings.values())
 
 
-def _credential(payload: dict[str, Any]) -> HeaderCredential | None:
+def _credential(payload: dict[str, Any]) -> HeaderCredential | LoginCredential | None:
     cred = payload.get("credential")
     if not cred:
         return None
-    if cred.get("type") != "header":
-        raise ValueError("tipo de credencial não suportado (só 'header' por enquanto)")
-    return HeaderCredential(name=cred["name"], value=cred["value"])
+    kind = cred.get("type")
+    if kind == "header":
+        return HeaderCredential(name=cred["name"], value=cred["value"])
+    if kind == "login":
+        # Senha vem no payload só em laboratório; em produção, a referência ao cofre (pendente
+        # de alinhar com o time). O login é feito pelo ZAP em run_scan, não aqui.
+        return LoginCredential(
+            login_url=cred["login_url"],
+            email=cred["email"],
+            password=cred["password"],
+            token_path=tuple(cred.get("token_path", ("authentication", "token"))),
+            header_name=cred.get("header_name", "Authorization"),
+            header_template=cred.get("header_template", "Bearer {token}"),
+        )
+    raise ValueError(f"tipo de credencial não suportado: {kind!r}")
 
 
 def handle(
