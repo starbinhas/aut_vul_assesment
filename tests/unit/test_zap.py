@@ -148,3 +148,30 @@ def test_zap_login_returns_header_credential() -> None:
     assert isinstance(cred, HeaderCredential)
     assert cred.name == "Authorization" and cred.value == "Bearer JWT123"
     assert "scanner@lab.local" in captured["raw"]
+
+
+# --- credencial: regra do Replacer é idempotente -----------------------------------------
+
+
+class FakeReplacer:
+    def __init__(self) -> None:
+        self.rules: set[str] = set()
+
+    def remove_rule(self, description):
+        self.rules.discard(description)
+        return "OK"
+
+    def add_rule(self, description, **kw):
+        if description in self.rules:
+            return "already_exists"  # comportamento real do ZAP
+        self.rules.add(description)
+        return "OK"
+
+
+def test_set_credential_is_idempotent_across_scans() -> None:
+    z = ZapScanner.__new__(ZapScanner)
+    z.zap = SimpleNamespace(replacer=FakeReplacer())
+    cred = HeaderCredential(name="Authorization", value="Bearer t")
+    z.set_credential(cred)
+    z.set_credential(cred)  # segundo scan na mesma instância do ZAP: não pode falhar
+    assert z.zap.replacer.rules == {ZapScanner.CREDENTIAL_RULE}

@@ -233,10 +233,17 @@ class ZapScanner:
             name=spec.header_name, value=spec.header_template.format(token=token)
         )
 
+    CREDENTIAL_RULE = "scanner-credential"
+
     def set_credential(self, cred: HeaderCredential) -> None:
-        """Injeta a credencial em toda requisição do ZAP (regra do add-on Replacer)."""
+        """Injeta a credencial em toda requisição do ZAP (regra do add-on Replacer).
+
+        O Replacer é global, não faz parte da sessão: uma regra de um scan anterior na mesma
+        instância do ZAP sobra e causaria 'already_exists'. Removemos antes de criar (idempotente).
+        """
+        self.zap.replacer.remove_rule(description=self.CREDENTIAL_RULE)  # ignora se não existir
         result = self.zap.replacer.add_rule(
-            description="scanner-credential",
+            description=self.CREDENTIAL_RULE,
             enabled=True,
             matchtype="REQ_HEADER",
             matchregex=False,
