@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% from "partials/macros.html" import sev, status, sevbar, scan_pill, proof %}
+{% block title %}Scan {{ scan.created_at|dt }}{% endblock %}
+{% block content %}
+{% set domain = target.domain if target else scan.target_id %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">{% if target %}<a href="/sites">Sites</a> / <a href="/sites/{{ target.target_id }}">{{ domain }}</a>{% else %}{{ domain }}{% endif %} / Scan de {{ scan.created_at|dt }}</p>
+    {% if report %}
+      <h1>{{ report.items|length|plural("falha", "falhas") }}<br><span class="dim">em {{ report.summary.affected_pages|plural("página", "páginas") }} de {{ domain }}.</span></h1>
+    {% else %}
+      <h1>Testando {{ domain }}.<br><span class="dim">As falhas aparecem aqui quando a validação terminar.</span></h1>
+    {% endif %}
+  </div>
+  {% if report %}
+  <div class="row">
+    <a class="btn ghost" href="/scans/{{ scan.scan_id }}/relatorio.html" target="_blank" rel="noopener">Ver relatório</a>
+    <a class="btn" href="/scans/{{ scan.scan_id }}/relatorio.pdf">Baixar PDF</a>
+  </div>
+  {% endif %}
+</div>
+
+{% if not report or scan.status != "done" %}
+  {% if report %}<div class="notice">Gerando uma nova versão do relatório. Abaixo, a versão anterior.</div>{% endif %}
+  {% include "partials/progress.html" %}
+{% endif %}
+
+{% if viewer.is_admin and report %}
+  {% if request.query_params.get("revisao") == "motivo" %}<div class="notice error" role="alert">Para marcar falso positivo, explique o motivo (pelo menos 10 caracteres).</div>{% endif %}
+  {% if pending_reviews %}
+  <div class="notice warn row between">
+    <span><strong>{{ pending_reviews|plural("revisão", "revisões") }}</strong> ainda fora do relatório do cliente.</span>
+    <form method="post" action="/admin/scans/{{ scan.scan_id }}/regerar" class="inline">
+      <input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}">
+      <button class="btn small primary" type="submit">Gerar relatório novamente</button>
+    </form>
+  </div>
+  {% endif %}
+{% endif %}
+
+{% if report %}
+<section class="section">
+  <div class="grid-2">
+    <div>
+      <h3>Por severidade</h3>
+      {{ sevbar(report.summary.by_severity) }}
+    </div>
+    <div>
+      <h3>Desde o scan anterior</h3>
+      {% if comparison %}
+        <div class="legend mt-4"><span><b>{{ comparison.new|length }}</b>{{ "nova" if comparison.new|length == 1 else "novas" }}</span><span><b>{{ comparison.fixed|length }}</b>{{ "corrigida" if comparison.fixed|length == 1 else "corrigidas" }}</span><span><b>{{ comparison.persisting|length }}</b>{{ "continua" if comparison.persisting|length == 1 else "continuam" }}</span></div>
+        {% if comparison.fixed %}
+        <details class="mt-4"><summary class="small muted">Ver as corrigidas</summary>
+          <ul class="pages mt-2">{% for it in comparison.fixed %}<li><span>{{ it.finding.title }}</span>{{ sev(it.severity.value) }}</li>{% endfor %}</ul>
+        </details>
+        {% endif %}
+      {% else %}
+        <p class="muted mt-4">Primeiro scan concluído deste site.</p>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <form class="filters" method="get" action="/scans/{{ scan.scan_id }}"
+        hx-get="/scans/{{ scan.scan_id }}" hx-target="#issues" hx-select="#issues" hx-swap="outerHTML" hx-push-url="true"
+        hx-trigger="change, input delay:300ms from:find input[type=search]">
+    {% for s in severities %}
+      <label class="chip"><input type="checkbox" name="sev" value="{{ s.value }}" {% if s.value in filters.sev %}checked{% endif %}><span>{{ s.value|severity }}</span></label>
+    {% endfor %}
+    <span class="sep" aria-hidden="true"></span>
+    {% for s in statuses %}
+      <label class="chip"><input type="checkbox" name="st" value="{{ s.value }}" {% if s.value in filters.st %}checked{% endif %}><span>{{ s.value|status }}</span></label>
+    {% endfor %}
+    <span class="spacer"></span>
+    <input type="search" name="q" value="{{ filters.q }}" placeholder="Buscar por falha ou página" aria-label="Buscar">
+    <noscript><button class="btn small ghost" type="submit">Filtrar</button></noscript>
+  </form>
+
+  <div id="issues">
+  {% if not items %}
+    <p class="empty">{{ "Nenhuma falha com esses filtros." if (filters.sev or filters.st or filters.q) else "Nenhuma falha encontrada no que foi testado." }}</p>
+  {% endif %}
+  {% for it in items %}
+    {% set f = it.finding %}
+    {% set iid = item_id(it.group_key) %}
+    <details class="issue" id="item-{{ iid }}">
+      <summary>
+        <span>{{ sev(it.severity.value) }}</span>
+        <span>
+          <span class="title">{{ f.title }}</span>
+          <div class="meta">{{ it.locations|length|plural("página", "páginas") }}{% if it.owasp_name %}, {{ it.owasp_name|lower }} ({{ f.owasp }}){% endif %}</div>
+        </span>
+        <span class="right">{% if it.group_key in new_keys %}<span class="pill new">Nova</span>{% endif %}{{ status(it.status.value) }}</span>
+      </summary>
+      <div class="body">
+        <div class="explain">
+          <div><h3>O que é</h3><p>{{ it.remediation.what_it_is }}</p></div>
+          <div><h3>Por que importa</h3><p>{{ it.remediation.why_it_matters }}</p></div>
+        </div>
+
+        <h3>Como corrigir</h3>
+        <ol class="steps">
+          {% for step in it.remediation.how_to_fix %}
+          <li>
+            <div class="t">{{ step.title }}</div>
+            <p>{{ step.detail }}</p>
+            {% if step.snippet %}
+            <div class="codeblock"><pre id="snip-{{ iid }}-{{ loop.index }}">{{ step.snippet }}</pre><button class="btn small ghost copy" type="button" data-copy="snip-{{ iid }}-{{ loop.index }}">Copiar</button></div>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ol>
+
+        <h3>Como verificar</h3>
+        <p class="muted">{{ it.remediation.how_to_verify }}</p>
+
+        <h3 class="mt-6">{{ "Página afetada" if it.locations|length == 1 else "Páginas afetadas" }}</h3>
+        <ul class="pages">
+          {% for loc in it.locations[:25] %}
+          <li>
+            <span><span class="method">{{ loc.method }}</span>{{ loc.url }}{% if loc.parameter %} <span class="faint">parâmetro {{ loc.parameter }}</span>{% endif %}</span>
+            {% if loc.status != it.status %}{{ status(loc.status.value) }}{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        {% if it.locations|length > 25 %}
+        <details class="mt-2"><summary class="small muted">Ver as outras {{ it.locations|length - 25 }}</summary>
+          <ul class="pages">{% for loc in it.locations[25:] %}<li><span><span class="method">{{ loc.method }}</span>{{ loc.url }}</span></li>{% endfor %}</ul>
+        </details>
+        {% endif %}
+
+        {% if f.validation %}
+        <h3 class="mt-6">Como verificamos</h3>
+        {{ proof(it) }}
+        {% if f.validation.proof and f.validation.proof.response and f.validation.proof.response.body_excerpt %}
+        <details class="mt-2"><summary class="small muted">Ver o trecho da resposta</summary>
+        <pre>{{ f.validation.proof.response.body_excerpt[:600] }}</pre>
+        </details>
+        {% endif %}
+        {% endif %}
+
+        {% if it.remediation.references %}
+        <p class="faint small mt-4">Para saber mais: {% for ref in it.remediation.references %}<a href="{{ ref }}" target="_blank" rel="noopener noreferrer">{{ ref }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% if f.cwe %}. Classificação CWE-{{ f.cwe }}.{% endif %}</p>
+        {% endif %}
+
+        {% if viewer.is_admin %}
+        <details class="review mt-4">
+          <summary>Revisão humana</summary>
+          <p class="small muted">Marque falso positivo só com prova. A decisão fica na auditoria com o seu nome e só chega ao cliente quando o relatório for gerado de novo.</p>
+          {% for loc in it.locations[:25] %}
+          <form method="post" action="/admin/scans/{{ scan.scan_id }}/revisao" class="form-row mt-2">
+            <input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}">
+            <input type="hidden" name="finding_id" value="{{ loc.finding_id }}">
+            <input type="hidden" name="item" value="{{ iid }}">
+            <div class="field"><label class="mono small">{{ loc.method }} {{ loc.url|truncate(70) }}</label>
+              <input type="text" name="reason" placeholder="Motivo (obrigatório para falso positivo)" maxlength="500"></div>
+            <button class="btn small danger" type="submit" name="decision" value="false_positive">Falso positivo</button>
+          </form>
+          {% endfor %}
+        </details>
+        {% endif %}
+      </div>
+    </details>
+  {% endfor %}
+  </div>
+</section>
+
+{% if report.discarded %}
+<section class="section">
+  <div class="section-head"><h2>Descartadas por verificação</h2><span class="section-label">{{ report.discarded|length }}</span></div>
+  <p class="muted">Apontadas pelas ferramentas, mas uma checagem objetiva (ou a nossa equipe) mostrou que não existem.</p>
+  <ul class="list">
+    {% for d in report.discarded %}
+    <li><div>{{ d.title }}<div class="faint small">{{ d.reason|sentence }}, {{ d.urls|length|plural("página", "páginas") }}</div></div>
+      {% if viewer.is_admin %}
+      <form method="post" action="/admin/scans/{{ scan.scan_id }}/revisao" class="inline">
+        <input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}">
+        <input type="hidden" name="decision" value="reopen">
+        {% for fid in d.finding_ids %}<input type="hidden" name="finding_id" value="{{ fid }}">{% endfor %}
+        <button class="linkish small" type="submit">Reabrir</button>
+      </form>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

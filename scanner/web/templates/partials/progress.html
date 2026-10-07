@@ -1,0 +1,34 @@
+{% set order = ["requested", "web_scanning", "validating", "reporting", "done"] %}
+{% set current = order.index(scan.status) if scan.status in order else 0 %}
+{% set running = scan.status not in ("done", "failed") %}
+<div id="progress" {% if running %}hx-get="/scans/{{ scan.scan_id }}/andamento" hx-trigger="every 4s" hx-swap="outerHTML"{% endif %}>
+  <div class="timeline" role="list">
+    {% for key, label in steps %}
+      {% set i = loop.index0 %}
+      <div class="step {{ 'done' if i < current else ('current' if i == current else '') }}" role="listitem" {% if i == current %}aria-current="step"{% endif %}>
+        <span class="k">{{ "%02d"|format(i + 1) }}</span>{{ label }}
+      </div>
+    {% endfor %}
+  </div>
+
+  {% if running %}
+  {% set pct = scan.progress_pct %}
+  {% set eta = scan_eta(scan) %}
+  <div class="progress-now">
+    <div class="row between">
+      <span>{{ scan.status_detail|phase if scan.status_detail else scan.status|scan_status }}{% if scan.progress_info %} — {{ scan.progress_info }}{% endif %}</span>
+      <span class="faint small" aria-live="polite">{% if pct is not none %}{{ pct }}%{% if eta %} · faltam {{ eta }}{% endif %}{% endif %}</span>
+    </div>
+    {% if pct is not none %}
+    <meter class="bar" min="0" max="100" value="{{ pct }}" aria-label="Progresso da fase"></meter>
+    {% else %}
+    <div class="bar indeterminate" role="progressbar" aria-label="Em andamento"><span></span></div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <p class="muted small mt-3" aria-live="polite">
+    {% if scan.status == "failed" %}O scan falhou. A equipe foi avisada.
+    {% else %}<span class="faint">Começou {{ scan.created_at|ago }}. Esta página atualiza sozinha; você pode fechá-la e voltar depois.</span>{% endif %}
+  </p>
+</div>

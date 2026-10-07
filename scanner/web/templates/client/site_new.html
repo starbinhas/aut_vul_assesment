@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Cadastrar site{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow"><a href="/sites">Sites</a> / Novo</p>
+    <h1>Qual site vamos testar?</h1>
+    <p class="lede">Depois de cadastrar, você comprova que o domínio é seu com um registro no DNS. Sem essa prova nenhum teste é feito.</p>
+  </div>
+</div>
+<div class="split">
+  <form method="post" action="/sites">
+    <input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}">
+    {% if error %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
+    {% if viewer.is_admin %}
+    <div class="field">
+      <label for="org_id">Cliente</label>
+      <select id="org_id" name="org_id" required>
+        {% for o in orgs %}<option value="{{ o.org_id }}">{{ o.name }}</option>{% endfor %}
+      </select>
+    </div>
+    {% endif %}
+    <div class="field">
+      <label for="site">Endereço do site</label>
+      <input id="site" name="site" type="text" inputmode="url" autocomplete="url" placeholder="loja.com.br" required value="{{ value }}" autofocus>
+      <div class="hint">Pode ser só o domínio ou o endereço completo, como https://loja.com.br/app.</div>
+    </div>
+    <button class="btn primary" type="submit">Cadastrar e ver como comprovar</button>
+  </form>
+  <aside class="muted small">
+    <p class="section-label">O que será testado</p>
+    <p>Somente o endereço que você cadastrar. Não seguimos links para outros domínios nem testamos subdomínios que você não cadastrou.</p>
+    <p class="section-label mt-6">O que não fazemos</p>
+    <p>Nada que apague ou altere dados, nada que derrube o site. Os testes ativos têm limite de velocidade e de tempo.</p>
+  </aside>
+</div>
+{% endblock %}

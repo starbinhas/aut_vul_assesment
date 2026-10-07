@@ -1,0 +1,147 @@
+# Serviços das etapas 4, 5 e 6. Redis e Postgres são compartilhados com o time.
+#
+# Redes:
+#   internal — sem saída para a internet: workers, redis, postgres, API do ZAP.
+#   egress   — só para quem precisa sair: zap (alvo), worker-validate (provas), worker-report (Claude API).
+
+x-worker: &worker
+  build:
+    context: .
+    target: base
+  image: scanner:latest
+  env_file: .env
+  restart: unless-stopped
+  read_only: true
+  tmpfs: [/tmp]
+  security_opt: ["no-new-privileges:true"]
+  depends_on:
+    redis: { condition: service_healthy }
+    postgres: { condition: service_healthy }
+    migrate: { condition: service_completed_successfully }
+
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redis-data:/data]
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes: [pg-data:/var/lib/postgresql/data]
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      retries: 10
+
+  migrate:
+    <<: *worker
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [internal]
+
+  # Par ZAP + worker-web: um scan por vez. Para escalar, duplique o par (zap-2 + worker-web-2).
+  zap:
+    image: zaproxy/zap-stable:latest
+    command:
+      - zap.sh
+      - -daemon
+      - -host
+      - 0.0.0.0
+      - -port
+      - "8080"
+      - -config
+      - api.key=${ZAP_API_KEY}
+      - -config
+      - api.addrs.addr.name=.*
+      - -config
+      - api.addrs.addr.regex=true
+      # Add-ons extras: regras beta/alpha (trazem as que faltavam na lista curada — ver o aviso
+      # "regras ausentes" do configure_policy), Retire.js (componentes JS vulneráveis, passivo e
+      # seguro para cliente) e import de OpenAPI/GraphQL para APIs. Só ampliam o que o perfil pode
+      # ligar; safe/balanced continuam presos à allowlist de policy.py.
+      - -addonupdate
+      - -addoninstall
+      - ascanrulesBeta
+      - -addoninstall
+      - ascanrulesAlpha
+      - -addoninstall
+      - pscanrulesBeta
+      - -addoninstall
+      - retire
+      - -addoninstall
+      - openapi
+      - -addoninstall
+      - graphql
+    environment:
+      JAVA_OPTS: -Xmx${ZAP_JVM_XMX:-3g}
+    mem_limit: 4g
+    cpus: 2
+    # Sem `ports:` — a API do ZAP nunca é publicada no host.
+    networks: [internal, egress]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8080/JSON/core/view/version/?apikey=$${ZAP_API_KEY} || exit 1"]
+      interval: 15s
+      retries: 20
+      start_period: 60s
+    env_file: .env
+
+  worker-web:
+    <<: *worker
+    command: ["python", "-m", "scanner.web_scan"]
+    environment:
+      ZAP_API_URL: http://zap:8080
+      CONSUMER_NAME: worker-web-1
+    depends_on:
+      redis: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+      zap: { condition: service_healthy }
+    networks: [internal]
+
+  worker-validate:
+    <<: *worker
+    command: ["python", "-m", "scanner.validation"]
+    environment:
+      CONSUMER_NAME: worker-validate-1
+    networks: [internal, egress]
+
+  worker-report:
+    <<: *worker
+    command: ["python", "-m", "scanner.report"]
+    environment:
+      CONSUMER_NAME: worker-report-1
+    networks: [internal, egress]
+
+  # Interface web: única porta publicada. Em produção fica atrás de um proxy reverso com TLS.
+  web:
+    <<: *worker
+    command: ["python", "-m", "scanner.web"]
+    ports:
+      - "127.0.0.1:8000:8000"
+    # egress: a verificação de domínio consulta o DNS público.
+    networks: [internal, egress]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/entrar')"]
+      interval: 15s
+      retries: 5
+
+networks:
+  internal:
+    internal: true
+  egress: {}
+
+volumes:
+  redis-data:
+  pg-data:

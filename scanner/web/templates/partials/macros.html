@@ -1,0 +1,64 @@
+{# Componentes reaproveitados pelas telas. #}
+
+{% macro sev(value) -%}
+<span class="sev sev-{{ value }}">{{ value|severity }}</span>
+{%- endmacro %}
+
+{% macro status(value) -%}
+<span class="status status-{{ value }}">{{ value|status }}</span>
+{%- endmacro %}
+
+{% macro scan_pill(scan) -%}
+{% if scan.status in ("requested", "web_scanning", "validating", "reporting") %}
+<span class="pill live">{{ scan.status|scan_status }}</span>
+{% elif scan.status == "done" %}
+<span class="pill">Concluído</span>
+{% elif scan.status == "failed" %}
+<span class="pill warn">Falhou</span>
+{% else %}
+<span class="pill">{{ scan.status|scan_status }}</span>
+{% endif %}
+{%- endmacro %}
+
+{% macro sevbar(by_severity) -%}
+{# Ordem fixa: o Postgres (JSONB) não preserva a ordem das chaves. #}
+{% set SEV_ORDER = ["critical", "high", "medium", "low", "info"] %}
+{% set total = by_severity.values()|sum %}
+{% if total %}
+<svg class="sevbar-svg" viewBox="0 0 1000 6" preserveAspectRatio="none" role="img" aria-label="Distribuição por severidade">
+  {% set ns = namespace(x=0) %}
+  {% for sev in SEV_ORDER if by_severity.get(sev) %}
+    {% set n = by_severity[sev] %}
+    {% set w = (n * 1000 / total)|round(2) %}
+    <rect class="b-{{ sev }}" x="{{ ns.x }}" y="0" width="{{ w }}" height="6"></rect>
+    {% set ns.x = ns.x + w %}
+  {% endfor %}
+</svg>
+<div class="legend">
+  {% for sev in SEV_ORDER if by_severity.get(sev) %}<span><b>{{ by_severity[sev] }}</b>{{ sev|severity|lower }}</span>{% endfor %}
+</div>
+{% endif %}
+{%- endmacro %}
+
+{% macro csrf_input(csrf_field, csrf) -%}
+<input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}">
+{%- endmacro %}
+
+{# Recibo da prova: o que enviamos e o que o site respondeu. #}
+{% macro proof(item, compact=false) -%}
+{% set v = item.finding.validation %}
+{% if v %}
+{% set p = v.proof %}
+<div class="proof {{ 'compact' if (compact or not p) }}" data-sev="{{ item.severity.value }}">
+  <div class="head">
+    <span>{% if item.status.value in ("confirmed", "likely") %}<strong>Como provamos.</strong>{% else %}<strong>Sem prova automática.</strong>{% endif %} {{ v.reason|sentence }}.</span>
+  </div>
+  {% if p and not compact %}
+  <dl>
+    <dt>Enviamos</dt><dd>{{ p.request.method }} {{ p.request.url }}</dd>
+    {% if p.response %}<dt>O site respondeu</dt><dd>HTTP {{ p.response.status }}{% if p.note %}, {{ p.note }}{% endif %}</dd>{% endif %}
+  </dl>
+  {% endif %}
+</div>
+{% endif %}
+{%- endmacro %}

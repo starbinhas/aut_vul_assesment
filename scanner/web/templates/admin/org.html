@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{{ org.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><p class="eyebrow"><a href="/admin/clientes">Clientes</a> / {{ org.name }}</p><h1>{{ org.name }}</h1></div>
+  <a class="btn ghost" href="/sites/novo">Cadastrar site</a>
+</div>
+{% include "partials/new_password.html" %}
+<section class="section">
+  <div class="section-head"><h2>Usuários</h2></div>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Nome</th><th>E-mail</th><th>Último acesso</th><th>Situação</th><th></th></tr></thead>
+    <tbody>
+    {% for u in users %}
+    <tr>
+      <td>{{ u.name }}</td><td class="mono small">{{ u.email }}</td><td class="muted">{{ u.last_login_at|ago if u.last_login_at else "nunca" }}</td>
+      <td>{% if not u.is_active %}<span class="pill">Desativado</span>{% elif u.locked_until %}<span class="pill warn">Bloqueado</span>{% else %}<span class="pill ok">Ativo</span>{% endif %}</td>
+      <td class="ta-right">
+        <form method="post" action="/admin/usuarios/{{ u.user_id }}/senha" class="inline"><input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}"><button class="linkish small" type="submit">Nova senha</button></form>
+        ·
+        <form method="post" action="/admin/usuarios/{{ u.user_id }}/ativo" class="inline"><input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}"><button class="linkish small" type="submit">{{ "Desativar" if u.is_active else "Reativar" }}</button></form>
+      </td>
+    </tr>
+    {% else %}<tr><td colspan="5" class="faint">Nenhum usuário.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <form method="post" action="/admin/clientes/{{ org.org_id }}/usuarios" class="form-row mt-6">
+    <input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}">
+    <div class="field"><label for="uname">Nome</label><input id="uname" name="name" type="text" required maxlength="200"></div>
+    <div class="field"><label for="uemail">E-mail</label><input id="uemail" name="email" type="email" required maxlength="320"></div>
+    <button class="btn primary" type="submit">Criar acesso</button>
+  </form>
+</section>
+<section class="section">
+  <div class="section-head"><h2>Sites</h2></div>
+  <ul class="list">
+    {% for t in sites %}<li><a href="/sites/{{ t.target_id }}">{{ t.domain }}</a>{% if t.verified_at %}<span class="pill ok">Verificado</span>{% else %}<span class="pill warn">Pendente</span>{% endif %}</li>
+    {% else %}<li class="faint">Nenhum site.</li>{% endfor %}
+  </ul>
+</section>
+{% endblock %}

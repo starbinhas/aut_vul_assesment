@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Sua conta{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Sua conta</p>
+    <h1>{{ viewer.name }}<br><span class="dim">{{ viewer.email }}</span></h1>
+  </div>
+</div>
+<div class="split">
+  <form method="post" action="/conta/senha">
+    <h2>Trocar a senha</h2>
+    {% if error %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
+    {% if message %}<div class="notice ok" role="status">{{ message }}</div>{% endif %}
+    <input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}">
+    <div class="field"><label for="current">Senha atual</label><input id="current" name="current" type="password" autocomplete="current-password" required></div>
+    <div class="field"><label for="new">Nova senha</label><input id="new" name="new" type="password" autocomplete="new-password" minlength="12" required><div class="hint">Pelo menos 12 caracteres. Uma frase longa é mais forte que uma senha curta cheia de símbolos.</div></div>
+    <div class="field"><label for="confirm">Repita a nova senha</label><input id="confirm" name="confirm" type="password" autocomplete="new-password" minlength="12" required></div>
+    <button class="btn primary" type="submit">Salvar nova senha</button>
+  </form>
+  <aside class="muted small">
+    <p class="section-label">Acesso</p>
+    <p>{{ "Administrador: vê todas as organizações e as telas da equipe." if viewer.is_admin else "Você vê os sites e relatórios de " ~ (org_name or "sua organização") ~ "." }}</p>
+  </aside>
+</div>
+{% endblock %}

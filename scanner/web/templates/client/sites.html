@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% from "partials/macros.html" import scan_pill, sevbar %}
+{% block title %}Sites{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">{{ org_name or "Todas as organizações" }}</p>
+    <h1>Sites</h1>
+  </div>
+  <a class="btn primary" href="/sites/novo">Cadastrar site</a>
+</div>
+{% if sites %}
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Site</th>{% if viewer.is_admin %}<th>Cliente</th>{% endif %}<th>Comprovação</th><th>Último scan</th><th>Falhas por severidade</th><th>Recorrência</th></tr></thead>
+  <tbody>
+  {% for s in sites %}
+  <tr>
+    <td><a href="/sites/{{ s.target.target_id }}">{{ s.target.domain }}</a><div class="faint small mono">{{ s.target.base_url }}</div></td>
+    {% if viewer.is_admin %}<td class="muted">{{ s.org }}</td>{% endif %}
+    <td>{% if s.target.verified_at %}<span class="pill ok">Verificado</span>{% else %}<span class="pill warn">Pendente</span>{% endif %}</td>
+    <td>{% if s.last_scan %}{{ scan_pill(s.last_scan) }}<div class="faint small mt-2">{{ s.last_scan.created_at|dt }}</div>{% else %}<span class="faint">Nunca</span>{% endif %}</td>
+    <td>{% if s.report %}{{ sevbar(s.report.summary.by_severity) }}{% else %}<span class="faint">—</span>{% endif %}</td>
+    <td class="muted small">{{ {"manual": "Manual", "weekly": "Semanal", "monthly": "Mensal"}[s.target.recurrence] }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="empty">Nenhum site cadastrado. <a href="/sites/novo">Cadastre o primeiro</a>.</p>
+{% endif %}
+{% endblock %}

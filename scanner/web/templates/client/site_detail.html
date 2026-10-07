@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% from "partials/macros.html" import scan_pill, sevbar %}
+{% set t = s.target %}
+{% block title %}{{ t.domain }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow"><a href="/sites">Sites</a> / {{ t.domain }}{% if viewer.is_admin and s.org %} ({{ s.org }}){% endif %}</p>
+    <h1>{{ t.domain }}</h1>
+    <p class="lede mono small">{{ t.base_url }}</p>
+  </div>
+  {% if t.verified_at %}
+    {% if running %}
+      <a class="btn ghost" href="/scans/{{ running.scan_id }}">Acompanhar o scan em andamento</a>
+    {% else %}
+      <form method="post" action="/sites/{{ t.target_id }}/scans" class="row">
+        <input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}">
+        <select name="profile" aria-label="Nível do scan">
+          {% for p in profiles %}<option value="{{ p.name }}">{{ p.label }}</option>{% endfor %}
+        </select>
+        <button class="btn primary" type="submit">Iniciar scan</button>
+      </form>
+    {% endif %}
+  {% endif %}
+</div>
+
+{% if error %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
+
+{% if not t.verified_at %}
+<section class="section">
+  <div class="split">
+    <div>
+      <h2>Comprove que o domínio é seu</h2>
+      <p class="muted">Crie este registro no painel de DNS do domínio (Registro.br, Cloudflare, GoDaddy, hospedagem…). Depois clique em verificar. A propagação costuma levar alguns minutos, mas pode chegar a algumas horas.</p>
+      <div class="mt-4">
+        <div class="record"><span class="k">Tipo</span><span class="v">TXT</span><span></span></div>
+        <div class="record"><span class="k">Nome</span><span class="v" id="rec-name">{{ record_name }}</span><button class="btn small ghost" type="button" data-copy="rec-name">Copiar</button></div>
+        <div class="record"><span class="k">Valor</span><span class="v" id="rec-value">{{ record_value }}</span><button class="btn small ghost" type="button" data-copy="rec-value">Copiar</button></div>
+      </div>
+      {% if t.last_check_error %}
+      <div class="notice warn mt-4" role="status"><strong>Ainda não deu certo.</strong> {{ t.last_check_error }} <span class="faint">Última tentativa {{ t.last_check_at|ago }}.</span></div>
+      {% endif %}
+      <form method="post" action="/sites/{{ t.target_id }}/verificar" class="mt-4">
+        <input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}">
+        <button class="btn primary" type="submit">Verificar agora</button>
+      </form>
+    </div>
+    <aside class="muted small">
+      <p class="section-label">Por que pedimos isso</p>
+      <p>Testar a segurança de um site sem autorização do dono é crime. O registro TXT só pode ser criado por quem controla o domínio — é a nossa garantia, e a sua, de que o teste é autorizado.</p>
+      <p class="section-label mt-6">Alguns painéis pedem só o começo do nome</p>
+      <p>Se o seu painel completa o domínio sozinho, preencha apenas <span class="mono">_pitchy-verificacao</span> no campo nome.</p>
+    </aside>
+  </div>
+</section>
+{% else %}
+
+{% if s.report %}
+<section class="section">
+  <div class="section-head">
+    <h2>Último resultado</h2>
+    <a class="small" href="/scans/{{ s.report_scan.scan_id }}">Abrir o scan de {{ s.report_scan.created_at|dt }}</a>
+  </div>
+  <div class="grid-2">
+    <div>
+      <p class="mb-0"><span class="figure-inline">{{ s.report.items|length|plural("falha", "falhas") }}</span> <span class="muted">em {{ s.report.summary.affected_pages|plural("página", "páginas") }}</span></p>
+      {{ sevbar(s.report.summary.by_severity) }}
+    </div>
+    <div>
+      {% if s.comparison %}
+      <p class="mb-0">Comparado ao scan anterior</p>
+      <div class="legend mt-2"><span><b>{{ s.comparison.new|length }}</b>{{ "nova" if s.comparison.new|length == 1 else "novas" }}</span><span><b>{{ s.comparison.fixed|length }}</b>{{ "corrigida" if s.comparison.fixed|length == 1 else "corrigidas" }}</span><span><b>{{ s.comparison.persisting|length }}</b>{{ "continua" if s.comparison.persisting|length == 1 else "continuam" }}</span></div>
+      {% else %}
+      <p class="muted">Este é o primeiro scan concluído. A comparação aparece a partir do próximo.</p>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<section class="section">
+  <div class="section-head"><h2>Scans</h2></div>
+  {% if scans %}
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Quando</th><th>Situação</th><th class="num">Falhas</th><th class="num">Páginas</th><th></th></tr></thead>
+    <tbody>
+    {% for scan in scans %}
+      {% set r = reports.get(scan.scan_id) %}
+      <tr>
+        <td>{{ scan.created_at|dt }}</td>
+        <td>{{ scan_pill(scan) }}{% if scan.status_detail and scan.status != "done" %} <span class="faint small">{{ scan.status_detail|phase }}</span>{% endif %}</td>
+        <td class="num">{{ r.items|length if r else "—" }}</td>
+        <td class="num">{{ r.summary.affected_pages if r else "—" }}</td>
+        <td class="ta-right"><a href="/scans/{{ scan.scan_id }}">Abrir</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">Nenhum scan ainda. O primeiro leva de 15 minutos a 1 hora.</p>
+  {% endif %}
+</section>
+
+<section class="section">
+  <div class="split">
+    <form method="post" action="/sites/{{ t.target_id }}/recorrencia">
+      <input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}">
+      <h2>Repetir o scan</h2>
+      <div class="form-row">
+        <div class="field">
+          <label for="recurrence">Frequência</label>
+          <select id="recurrence" name="recurrence">
+            {% for k, label in recurrence.items() %}<option value="{{ k }}" {% if t.recurrence == k %}selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+        </div>
+        <button class="btn ghost" type="submit">Salvar</button>
+      </div>
+    </form>
+    <aside class="muted small">
+      <p class="section-label">Por que repetir</p>
+      <p>Cada deploy pode trazer uma falha nova, e falhas novas em bibliotecas são publicadas toda semana. Com a repetição, você vê o que apareceu e o que foi corrigido.</p>
+    </aside>
+  </div>
+</section>
+<p class="faint small">Domínio comprovado em {{ t.verified_at|dt }}.</p>
+{% endif %}
+{% endblock %}

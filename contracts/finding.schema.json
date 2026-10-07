@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://scanner.internal/contracts/finding.schema.json",
+  "title": "Finding",
+  "description": "Achado de segurança trocado entre as etapas 3, 4, 5 e 6. Fonte da verdade do contrato. Mudança aqui = combinar com o time + incrementar schema_version.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "finding_id", "scan_id", "target_id", "source", "title",
+    "severity", "status", "location", "evidence"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "finding_id": {
+      "type": "string",
+      "description": "Determinístico: sha256 de scan_id + fonte + regra + método + URL normalizada + parâmetro. Garante idempotência.",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "scan_id": { "type": "string", "minLength": 1 },
+    "target_id": { "type": "string", "minLength": 1 },
+    "source": { "$ref": "#/$defs/source" },
+    "related_sources": {
+      "type": "array",
+      "description": "Outras fontes que reportaram o mesmo achado (preenchido pela deduplicação da etapa 5).",
+      "items": { "$ref": "#/$defs/source" },
+      "default": []
+    },
+    "title": { "type": "string", "minLength": 1 },
+    "description": { "type": ["string", "null"] },
+    "cwe": { "type": ["integer", "null"], "minimum": 1 },
+    "owasp": {
+      "type": ["string", "null"],
+      "description": "Categoria do OWASP Top 10 vigente, ex.: 'A05:2025'.",
+      "pattern": "^A(0[1-9]|10):20[0-9]{2}$"
+    },
+    "severity": { "enum": ["critical", "high", "medium", "low", "info"] },
+    "status": {
+      "enum": ["candidate", "confirmed", "likely", "unconfirmed", "false_positive"],
+      "description": "Etapas 3/4 só emitem 'candidate'. 'false_positive' só por checagem determinística ou revisão humana, nunca pelo LLM."
+    },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "method"],
+      "properties": {
+        "url": { "type": "string", "format": "uri" },
+        "method": { "type": "string", "pattern": "^[A-Z]+$" },
+        "parameter": { "type": ["string", "null"] }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "description": "Requisições/respostas que expuseram ou provaram o achado. Segredos já mascarados.",
+      "items": { "$ref": "#/$defs/evidence" }
+    },
+    "validation": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/validation" }],
+      "default": null
+    }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool", "rule_id"],
+      "properties": {
+        "tool": { "enum": ["nuclei", "zap"] },
+        "rule_id": { "type": "string", "description": "ID do plugin do ZAP ou do template do nuclei." },
+        "rule_name": { "type": ["string", "null"] },
+        "tool_severity": { "type": ["string", "null"], "description": "Severidade original da ferramenta." }
+      }
+    },
+    "http_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "url"],
+      "properties": {
+        "method": { "type": "string" },
+        "url": { "type": "string" },
+        "headers": { "type": "object", "additionalProperties": { "type": "string" }, "default": {} },
+        "body": { "type": ["string", "null"] }
+      }
+    },
+    "http_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "type": "integer" },
+        "headers": { "type": "object", "additionalProperties": { "type": "string" }, "default": {} },
+        "body_excerpt": { "type": ["string", "null"], "description": "Trecho limitado do corpo, só o mínimo para provar." }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request"],
+      "properties": {
+        "request": { "$ref": "#/$defs/http_request" },
+        "response": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/http_response" }] },
+        "note": { "type": ["string", "null"] }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["validator", "outcome", "reason", "validated_at"],
+      "properties": {
+        "validator": { "type": "string" },
+        "outcome": { "enum": ["confirmed", "likely", "unconfirmed", "false_positive"] },
+        "reason": { "type": "string" },
+        "proof": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/evidence" }] },
+        "validated_at": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

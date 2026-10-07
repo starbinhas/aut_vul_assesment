@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% from "partials/macros.html" import sev, status, scan_pill, proof %}
+{% block title %}Visão geral{% endblock %}
+{% block content %}
+{% set verified = sites|selectattr("target.verified_at")|list %}
+{% set scanned = sites|selectattr("report")|list %}
+{% set first = fix_now[0] if fix_now else none %}
+
+<section class="next">
+  <p class="eyebrow">{{ org_name or ("Todas as organizações" if viewer.is_admin else "Visão geral") }}</p>
+  {% if not sites %}
+    <h1>Comece cadastrando o seu site.<br><span class="dim">São três passos até o primeiro relatório.</span></h1>
+  {% elif not scanned %}
+    <h1>Nenhum scan concluído ainda.<br><span class="dim">{{ "O seu site já pode ser testado." if verified else "Falta comprovar que o domínio é seu." }}</span></h1>
+  {% elif first %}
+    {% set s, it = first %}
+    <h1>Corrija primeiro a <a href="/scans/{{ s.report_scan.scan_id }}#item-{{ item_id(it.group_key) }}">{{ it.finding.title }}</a> em <span class="nowrap">{{ s.target.domain }}</span>.</h1>
+    <p class="lede">{{ it.status.value|status }}, severidade {{ it.severity.value|severity|lower }}, {{ it.locations|length|plural("página afetada", "páginas afetadas") }}.</p>
+    {{ proof(it) }}
+    <div class="actions">
+      <a class="btn primary" href="/scans/{{ s.report_scan.scan_id }}#item-{{ item_id(it.group_key) }}">Ver como corrigir</a>
+      <a class="btn ghost" href="/scans/{{ s.report_scan.scan_id }}">Todas as {{ s.report.items|length }} falhas de {{ s.target.domain }}</a>
+    </div>
+  {% else %}
+    <h1>Nada urgente para corrigir.<br><span class="dim">{{ totals.open|plural("falha aberta", "falhas abertas") }}, nenhuma média ou mais grave com prova.</span></h1>
+  {% endif %}
+</section>
+
+{% if not scanned %}
+<section class="section">
+  <ol class="checklist">
+    <li class="{{ 'done' if sites }}"><div><div class="t">Cadastre o endereço do site</div><p>O domínio que você quer testar, por exemplo loja.com.br.</p></div></li>
+    <li class="{{ 'done' if verified }}"><div><div class="t">Comprove que o domínio é seu</div><p>Você cria um registro TXT no DNS. Sem ele nenhum teste é feito: é o que torna o scan legal.</p></div></li>
+    <li><div><div class="t">Rode o primeiro scan</div><p>Leva de 15 minutos a 1 hora. Você recebe as falhas confirmadas e como corrigir cada uma.</p></div></li>
+  </ol>
+  <div class="mt-6">
+    {% if not sites %}<a class="btn primary" href="/sites/novo">Cadastrar site</a>
+    {% else %}<a class="btn primary" href="/sites/{{ sites[0].target.target_id }}">{{ "Iniciar o primeiro scan" if verified else "Comprovar o domínio" }}</a>{% endif %}
+  </div>
+</section>
+{% else %}
+
+{% if new_items or fixed_items %}
+<section class="section">
+  <h2>Desde o último scan</h2>
+  <div class="ledger">
+    <div>
+      <h3><span class="n">{{ new_items|length }}</span> {{ "nova" if new_items|length == 1 else "novas" }}</h3>
+      <ul class="list">
+        {% for s, it in new_items %}
+        <li><a href="/scans/{{ s.report_scan.scan_id }}#item-{{ item_id(it.group_key) }}">{{ it.finding.title }}</a>{{ sev(it.severity.value) }}</li>
+        {% else %}<li class="faint">Nenhuma falha nova.</li>{% endfor %}
+      </ul>
+    </div>
+    <div>
+      <h3><span class="n">{{ fixed_items|length }}</span> {{ "corrigida" if fixed_items|length == 1 else "corrigidas" }}</h3>
+      <ul class="list">
+        {% for s, it in fixed_items %}
+        <li class="fixed-item"><span>{{ it.finding.title }}</span><span class="small">não apareceu mais em {{ s.target.domain }}</span></li>
+        {% else %}<li class="faint">Nenhuma ainda. Corrija e rode um novo scan para confirmar.</li>{% endfor %}
+      </ul>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{% if fix_now|length > 1 %}
+<section class="section">
+  <div class="section-head">
+    <h2>Depois desta</h2>
+    <span class="section-label">Confirmadas ou prováveis, da mais grave para a menos grave</span>
+  </div>
+  <ul class="list">
+    {% for s, it in fix_now[1:] %}
+    <li>
+      <div>
+        <a href="/scans/{{ s.report_scan.scan_id }}#item-{{ item_id(it.group_key) }}">{{ it.finding.title }}</a>
+        <div class="faint small">{{ s.target.domain }}, {{ it.locations|length|plural("página", "páginas") }}</div>
+      </div>
+      <div class="row">{{ status(it.status.value) }} {{ sev(it.severity.value) }}</div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endif %}
+
+{% if sites %}
+<section class="section">
+  <div class="section-head"><h2>Sites</h2><a class="small" href="/sites/novo">Cadastrar outro site</a></div>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Site</th>{% if viewer.is_admin %}<th>Cliente</th>{% endif %}<th>Domínio comprovado</th><th>Último scan</th><th class="num">Falhas abertas</th></tr></thead>
+    <tbody>
+    {% for s in sites %}
+      <tr>
+        <td><a href="/sites/{{ s.target.target_id }}">{{ s.target.domain }}</a></td>
+        {% if viewer.is_admin %}<td class="muted">{{ s.org }}</td>{% endif %}
+        <td>{% if s.target.verified_at %}<span class="pill ok">Sim</span>{% else %}<span class="pill warn">Pendente</span>{% endif %}</td>
+        <td>{% if s.last_scan %}{{ scan_pill(s.last_scan) }} <span class="faint small">{{ s.last_scan.created_at|ago }}</span>{% else %}<span class="faint">Nunca</span>{% endif %}</td>
+        <td class="num">{% if s.report %}{{ s.report.items|length }}{% if s.comparison and s.comparison.new %} <span class="pill new">+{{ s.comparison.new|length }}</span>{% endif %}{% else %}<span class="faint">—</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endif %}
+
+{% if recent %}
+<section class="section">
+  <h2>Histórico</h2>
+  <ul class="list">
+  {% for scan in recent %}
+    <li>
+      <div><a href="/scans/{{ scan.scan_id }}">{{ domains.get(scan.target_id, scan.target_id) }}</a> <span class="faint small">{{ scan.created_at|dt }}</span></div>
+      {{ scan_pill(scan) }}
+    </li>
+  {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endblock %}

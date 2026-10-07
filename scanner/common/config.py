@@ -1,0 +1,43 @@
+"""Configuração via variáveis de ambiente (ver `.env.example`)."""
+
+from functools import lru_cache
+from typing import Literal
+
+from pydantic import Field, SecretStr
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    database_url: str = "postgresql+psycopg://scanner:scanner@localhost:5432/scanner"
+    redis_url: str = "redis://localhost:6379/0"
+
+    zap_api_url: str = "http://localhost:8080"
+    zap_api_key: SecretStr = SecretStr("")
+
+    scan_max_duration_minutes: int = Field(default=60, ge=1)
+    scan_threads_per_host: int = Field(default=2, ge=1, le=5)
+    scan_max_requests_per_second: int = Field(default=10, ge=1, le=50)
+    # O perfil agressivo (testes que podem causar dano) só roda contra estes hosts.
+    # Site de cliente nunca está aqui: a trava garante que o agressivo não o atinge.
+    lab_hosts: list[str] = ["juice-shop", "dvwa", "localhost", "127.0.0.1"]
+
+    anthropic_api_key: SecretStr = SecretStr("")
+    llm_model: str = "claude-opus-5-5"
+    llm_effort: Literal["low", "medium", "high", "xhigh", "max"] = "high"
+    # Fontes que precisam ter entregue candidatos antes de gerar o relatório (PROVISÓRIO).
+    report_required_tools: list[str] = ["zap", "nuclei"]
+
+    # Interface web
+    web_session_secret: SecretStr = SecretStr("")
+    web_secure_cookies: bool = True  # False só em desenvolvimento local sem HTTPS
+    web_session_hours: int = Field(default=12, ge=1, le=72)
+
+    log_level: str = "INFO"
+    consumer_name: str = "worker-1"
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()

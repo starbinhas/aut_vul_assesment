@@ -1,0 +1,685 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Guia do projeto — Scanner de segurança</title>
+<style>
+  @page {
+    size: A4; margin: 20mm 18mm 20mm 18mm;
+    @bottom-center { content: "Guia do projeto · página " counter(page) " de " counter(pages); font-family: "Ubuntu Sans", "DejaVu Sans", sans-serif; font-size: 8.5pt; color: #64748b; }
+  }
+  @page :first { @bottom-center { content: none; } }
+  body { font-family: "Ubuntu Sans", "DejaVu Sans", sans-serif; font-size: 10.5pt; line-height: 1.55; color: #0f172a; }
+  h1 { font-size: 26pt; margin: 0; line-height: 1.15; }
+  h2 { font-size: 17pt; margin: 0 0 8pt; padding-bottom: 4pt; border-bottom: 2px solid #1d4ed8; margin-top: 26pt; page-break-after: avoid; color: #0f172a; }
+  h3, h4 { page-break-after: avoid; }
+  .cover { page-break-after: always; }
+  h3 { font-size: 12.5pt; margin: 16pt 0 4pt; color: #1e3a8a; }
+  h4 { font-size: 11pt; margin: 12pt 0 2pt; }
+  p { margin: 4pt 0 8pt; }
+  code, .mono { font-family: "Ubuntu Mono", "DejaVu Sans Mono", monospace; font-size: 9.5pt; background: #f1f5f9; padding: 0 3pt; border-radius: 2pt; }
+  pre { font-family: "Ubuntu Mono", "DejaVu Sans Mono", monospace; font-size: 8.8pt; background: #0f172a; color: #e2e8f0; padding: 8pt 10pt; border-radius: 4pt; white-space: pre-wrap; line-height: 1.4; page-break-inside: avoid; }
+  pre .c { color: #94a3b8; }
+  ul, ol { margin: 2pt 0 8pt; padding-left: 16pt; }
+  li { margin-bottom: 3pt; }
+  table { border-collapse: collapse; width: 100%; margin: 6pt 0 10pt; font-size: 9.6pt; page-break-inside: auto; }
+  th, td { border: 1px solid #cbd5e1; padding: 4pt 6pt; vertical-align: top; text-align: left; }
+  th { background: #e2e8f0; }
+  tr { page-break-inside: avoid; }
+  .box { border-radius: 4pt; padding: 8pt 11pt; margin: 8pt 0 10pt; page-break-inside: avoid; }
+  .analogia { background: #eff6ff; border-left: 4px solid #2563eb; }
+  .atencao { background: #fff7ed; border-left: 4px solid #ea580c; }
+  .resumo { background: #f0fdf4; border-left: 4px solid #16a34a; }
+  .box b.t { display: block; margin-bottom: 2pt; }
+  .cover { height: 245mm; display: flex; flex-direction: column; justify-content: center; }
+  .cover .sub { font-size: 13pt; color: #475569; margin-top: 8pt; }
+  .cover .meta { margin-top: 30pt; font-size: 10pt; color: #64748b; }
+  .toc { columns: 1; }
+  .toc li { margin-bottom: 2pt; }
+  .flow { display: flex; flex-wrap: nowrap; gap: 2pt; align-items: center; margin: 8pt 0 12pt; }
+  .step { border: 1px solid #94a3b8; border-radius: 4pt; padding: 3pt 4pt; font-size: 7.6pt; background: #f8fafc; text-align: center; }
+  .step.nosso { background: #1d4ed8; color: #fff; border-color: #1d4ed8; font-weight: bold; }
+  .arrow { color: #64748b; font-size: 9pt; }
+  .diagram { border: 1px solid #cbd5e1; border-radius: 6pt; padding: 10pt; margin: 8pt 0 12pt; page-break-inside: avoid; }
+  .row { display: flex; gap: 8pt; justify-content: center; align-items: stretch; margin: 4pt 0; }
+  .node { border: 1.5px solid #334155; border-radius: 4pt; padding: 5pt 8pt; text-align: center; font-size: 9pt; flex: 1; background: #fff; }
+  .node small { display: block; color: #64748b; font-size: 8pt; }
+  .node.q { background: #fef9c3; border-color: #a16207; }
+  .node.db { background: #ede9fe; border-color: #6d28d9; }
+  .node.w { background: #dbeafe; border-color: #1d4ed8; }
+  .node.ext { background: #fee2e2; border-color: #b91c1c; }
+  .down { text-align: center; color: #64748b; font-size: 10pt; margin: 1pt 0; }
+  .zone { border: 2px dashed #94a3b8; border-radius: 6pt; padding: 6pt; margin: 4pt 0; }
+  .zone .label { font-size: 8.5pt; font-weight: bold; color: #475569; margin-bottom: 3pt; }
+  .tag { display: inline-block; font-size: 8pt; padding: 0 5pt; border-radius: 3pt; background: #e2e8f0; margin-right: 3pt; }
+  .gloss dt { font-weight: bold; margin-top: 6pt; page-break-after: avoid; }
+  .gloss dd { margin: 0 0 2pt 12pt; }
+  .small { font-size: 9pt; color: #475569; }
+</style>
+</head>
+<body>
+
+<!-- ============================== CAPA ============================== -->
+<div class="cover">
+  <div style="font-size:11pt; color:#1d4ed8; font-weight:bold; letter-spacing:1pt;">GUIA PARA QUEM ESTÁ COMEÇANDO</div>
+  <h1>O projeto do scanner de segurança, explicado do zero</h1>
+  <div class="sub">O que ele faz, como funciona por dentro, cada ferramenta usada (inclusive o Docker) e cada conceito importante — sem pressupor que você já programou.</div>
+  <div class="meta">Repositório <span class="mono">~/scan_site</span> · etapas 4, 5 e 6 do fluxo de scan · outubro de 2026</div>
+</div>
+
+<!-- ============================== SUMÁRIO ============================== -->
+<h2 style="page-break-before: always;">Como usar este guia</h2>
+<p>Este documento foi escrito para quem nunca desenvolveu software. Ele vai do mais geral (o que o produto faz) para o mais específico (o que cada pasta do projeto contém). Você não precisa ler tudo de uma vez: os capítulos 1 a 3 dão a visão geral; os capítulos 4 a 6 explicam as ferramentas; os capítulos 7 a 10 mostram como tudo se encaixa no nosso código. No final há um glossário com todos os termos.</p>
+<p>Ao longo do texto aparecem três tipos de caixa:</p>
+<div class="box analogia"><b class="t">Analogia</b>Uma comparação com algo do dia a dia, para dar intuição antes do detalhe técnico.</div>
+<div class="box atencao"><b class="t">Atenção</b>Algo que pode dar errado, ou uma regra que não pode ser quebrada.</div>
+<div class="box resumo"><b class="t">Em uma frase</b>O resumo do que importa lembrar.</div>
+
+<h3>Sumário</h3>
+<ol class="toc">
+  <li>O que é o produto</li>
+  <li>As 7 etapas do scan — e quais são nossas</li>
+  <li>Como a web funciona (o mínimo necessário)</li>
+  <li>Conceitos de segurança</li>
+  <li>As ferramentas de segurança: ZAP, nuclei e naabu</li>
+  <li>As ferramentas de desenvolvimento: Python, uv, Git, VS Code, WSL e companhia</li>
+  <li>Docker, explicado com calma</li>
+  <li>Como as peças conversam: filas, banco de dados e o "contrato"</li>
+  <li>Passeio pelas etapas 4, 5 e 6 por dentro</li>
+  <li>A inteligência artificial (Claude) no relatório</li>
+  <li>As regras de ouro e como o código as garante</li>
+  <li>Mapa de pastas e arquivos</li>
+  <li>Como rodar o projeto, passo a passo</li>
+  <li>O que ainda está pendente</li>
+  <li>Glossário</li>
+</ol>
+
+<!-- ============================== 1 ============================== -->
+<h2>1. O que é o produto</h2>
+<p>O produto é um <b>scanner de segurança automatizado vendido como serviço</b> (o que o mercado chama de <i>SaaS</i>, "software como serviço": o cliente usa pela internet e paga uma assinatura, sem instalar nada).</p>
+<p>O cliente informa o endereço do site dele (por exemplo, <span class="mono">loja-do-cliente.com.br</span>). O sistema então, de forma automática:</p>
+<ol>
+  <li>confirma que o site é mesmo daquele cliente;</li>
+  <li>descobre o que está exposto na internet;</li>
+  <li>testa o site procurando falhas de segurança conhecidas;</li>
+  <li><b>confirma</b> quais falhas são reais (e descarta alarmes falsos);</li>
+  <li>entrega um <b>relatório em linguagem simples</b>, com o passo a passo para corrigir cada falha;</li>
+  <li>repete tudo periodicamente e mostra a evolução ("3 falhas novas, 5 corrigidas").</li>
+</ol>
+<div class="box analogia"><b class="t">Analogia</b>Pense numa vistoria de imóvel. O vistoriador (o scanner) só entra com autorização do dono, percorre todos os cômodos (reconhecimento), testa portas, janelas e fiação (testes), confirma o que é problema de verdade e o que é só aparência (validação) e entrega um laudo que o dono entende, dizendo o que consertar e como (relatório).</div>
+<h3>Por que alguém pagaria por isso?</h3>
+<p>Já existem ferramentas gratuitas que encontram falhas. O problema delas é duplo: (1) apontam muitas falhas que não existem de verdade — os <b>falsos positivos</b> — e (2) falam uma língua que só especialistas entendem. O diferencial deste produto está justamente nas duas etapas que este repositório implementa: <b>validar</b> (provar que a falha é real) e <b>explicar e ensinar a corrigir</b>.</p>
+<div class="box resumo"><b class="t">Em uma frase</b>O produto encontra falhas de segurança em sites, prova quais são reais e ensina o cliente a corrigi-las.</div>
+
+<!-- ============================== 2 ============================== -->
+<h2 style="page-break-before: always;">2. As 7 etapas do scan — e quais são nossas</h2>
+<p>O processo completo tem sete etapas em sequência. A saída de uma é a entrada da seguinte, como uma linha de montagem.</p>
+<div class="flow">
+  <span class="step">1 Autorização</span><span class="arrow">→</span>
+  <span class="step">2 Reconhecimento</span><span class="arrow">→</span>
+  <span class="step">3 CVEs</span><span class="arrow">→</span>
+  <span class="step nosso">4 Web</span><span class="arrow">→</span>
+  <span class="step nosso">5 Validação</span><span class="arrow">→</span>
+  <span class="step nosso">6 Relatório</span><span class="arrow">→</span>
+  <span class="step">7 Recorrência</span>
+</div>
+<table style="page-break-inside: avoid;">
+  <tr><th style="width:18%">Etapa</th><th>O que faz</th><th style="width:22%">Quem cuida</th></tr>
+  <tr><td>1 Autorização</td><td>Confirma que o site pertence ao cliente (ex.: pedindo que ele publique um código secreto no DNS do domínio) e define o <b>escopo</b>: o que pode e o que não pode ser testado.</td><td>Outro membro do time</td></tr>
+  <tr><td>2 Reconhecimento</td><td>Usa a ferramenta <b>naabu</b> para descobrir quais "portas" do servidor estão abertas e que serviços respondem nelas.</td><td>Outro membro do time</td></tr>
+  <tr><td>3 CVEs</td><td>Usa a ferramenta <b>nuclei</b> para comparar o que foi encontrado com milhares de falhas já conhecidas e catalogadas.</td><td>Outro membro do time</td></tr>
+  <tr><td><b>4 Web</b></td><td>Usa o <b>OWASP ZAP</b> para navegar pelo site e testar cada página e formulário.</td><td><b>Este repositório</b></td></tr>
+  <tr><td><b>5 Validação</b></td><td>Junta os achados repetidos, refaz um teste seguro para provar cada falha e define a gravidade.</td><td><b>Este repositório</b></td></tr>
+  <tr><td><b>6 Relatório</b></td><td>Escreve, para cada falha, "o que é / por que importa / como corrigir", com ajuda de IA, e gera o PDF.</td><td><b>Este repositório</b></td></tr>
+  <tr><td>7 Recorrência</td><td>Agenda novos scans e compara com os anteriores.</td><td>Outro membro do time</td></tr>
+</table>
+<p>Como cada pessoa do time cuida de etapas diferentes, precisamos de um <b>combinado</b> sobre o formato dos dados que passam de uma etapa para outra. Isso se chama <b>contrato</b> e está explicado no capítulo 8. Graças a ele, cada um pode até usar uma linguagem de programação diferente.</p>
+<div class="box atencao"><b class="t">Atenção — a etapa 1 é a fronteira legal</b>Testar a segurança de um site sem autorização formal do dono é crime. Por isso, nada nas etapas 4, 5 e 6 roda sem a confirmação de que a etapa 1 aprovou o alvo. Isso é verificado no código (capítulo 11).</div>
+
+<!-- ============================== 3 ============================== -->
+<h2>3. Como a web funciona (o mínimo necessário)</h2>
+<p>Para entender o que o scanner testa, é preciso entender como um site conversa com o navegador.</p>
+
+<h3>Cliente, servidor e URL</h3>
+<p>Quando você abre um site, seu navegador (o <b>cliente</b>) envia um pedido para um computador remoto (o <b>servidor</b>), que responde com a página. O endereço completo de uma página é a <b>URL</b>:</p>
+<pre>https://loja.com.br/busca?produto=camiseta&amp;cor=azul
+└─┬──┘   └───┬────┘└─┬──┘└──────────────┬─────────────┘
+esquema    host    caminho       parâmetros (query string)</pre>
+<ul>
+  <li><b>Esquema</b>: <span class="mono">http</span> ou <span class="mono">https</span> (o "s" significa que a conversa é criptografada).</li>
+  <li><b>Host</b>: o nome do servidor. É o que o escopo controla: só podemos tocar nos hosts autorizados.</li>
+  <li><b>Caminho</b>: qual página dentro do site.</li>
+  <li><b>Parâmetros</b>: dados que vão junto com o pedido. Aqui mora boa parte das falhas, porque são valores que o usuário controla.</li>
+</ul>
+
+<h3>Requisição e resposta HTTP</h3>
+<p>A conversa entre navegador e servidor segue um protocolo chamado <b>HTTP</b>. Cada pedido é uma <b>requisição</b> e cada retorno é uma <b>resposta</b>.</p>
+<pre><span class="c"># Requisição (o que o navegador envia)</span>
+GET /busca?produto=camiseta HTTP/1.1
+Host: loja.com.br
+Cookie: sessao=a8f3...
+
+<span class="c"># Resposta (o que o servidor devolve)</span>
+HTTP/1.1 200 OK
+Content-Type: text/html
+X-Frame-Options: SAMEORIGIN
+
+&lt;html&gt;... Resultados para camiseta ...&lt;/html&gt;</pre>
+<ul>
+  <li><b>Método</b>: o tipo de pedido. <span class="mono">GET</span> = "me mostre algo" (só leitura). <span class="mono">POST</span> = "receba estes dados" (enviar formulário, comprar, cadastrar). <span class="mono">PUT</span>/<span class="mono">DELETE</span> = alterar/apagar. Isso é importante: nossas provas de validação usam só <span class="mono">GET</span> e <span class="mono">HEAD</span>, para não alterar nada no site do cliente.</li>
+  <li><b>Código de status</b>: um número que resume o resultado. 200 = deu certo; 302 = "vá para outro endereço" (redirecionamento); 404 = não encontrado; 500 = erro no servidor.</li>
+  <li><b>Cabeçalhos</b> (<i>headers</i>): linhas de informação extra, como <span class="mono">Content-Type</span>. Alguns cabeçalhos são de <b>segurança</b> e instruem o navegador a se proteger; a ausência deles é uma falha comum.</li>
+  <li><b>Corpo</b> (<i>body</i>): o conteúdo em si, normalmente a página HTML.</li>
+</ul>
+
+<h3>Cookies e sessão</h3>
+<p>O HTTP não tem memória: cada requisição é independente. Para o site "lembrar" que você fez login, o servidor entrega um <b>cookie</b> — um pequeno texto que o navegador guarda e reenvia em toda requisição. Quem rouba o cookie de sessão de alguém consegue se passar por essa pessoa. Por isso cookies, tokens e senhas são <b>dados sensíveis</b>: o projeto os mascara (troca por <span class="mono">***</span>) antes de guardar em log, mandar para a IA ou colocar no relatório.</p>
+
+<h3>HTML, JavaScript e SPA</h3>
+<p><b>HTML</b> é a linguagem que descreve a página (títulos, textos, botões). <b>JavaScript</b> é a linguagem de programação que roda dentro do navegador e deixa a página interativa. Muitos sites modernos são <b>SPAs</b> (<i>Single Page Applications</i>): a página é montada pelo JavaScript no navegador. Isso importa porque um robô que só lê o HTML não "enxerga" esses sites; por isso o ZAP tem um segundo rastreador que usa um navegador de verdade (o AJAX spider).</p>
+
+<h3>Portas e DNS</h3>
+<p>Um servidor pode oferecer vários serviços, cada um numa <b>porta</b> numerada (como apartamentos num prédio): 80 para HTTP, 443 para HTTPS, 5432 para o banco Postgres etc. O <b>DNS</b> é a "lista telefônica" da internet: traduz <span class="mono">loja.com.br</span> no endereço numérico (IP) do servidor.</p>
+
+<!-- ============================== 4 ============================== -->
+<h2>4. Conceitos de segurança</h2>
+
+<h3>Vulnerabilidade</h3>
+<p>Uma <b>vulnerabilidade</b> (ou falha) é um defeito que permite a alguém fazer o que não deveria: ler dados alheios, se passar por outro usuário, alterar informações. Um <b>achado</b> (<i>finding</i>) é o registro de uma possível vulnerabilidade encontrada pelo scanner.</p>
+
+<h3>CVE, CWE e OWASP Top 10 — três "catálogos"</h3>
+<table>
+  <tr><th style="width:18%">Nome</th><th>O que cataloga</th><th style="width:30%">Exemplo</th></tr>
+  <tr><td><b>CVE</b></td><td>Falhas específicas em produtos específicos ("a versão 2.4.49 do Apache tem tal falha"). Cada uma ganha um número.</td><td>CVE-2021-41773</td></tr>
+  <tr><td><b>CWE</b></td><td>Tipos de falha, independentemente do produto ("não escapar dados na página"). Usamos o CWE para agrupar e para escolher como validar.</td><td>CWE-79 = XSS; CWE-89 = SQL injection</td></tr>
+  <tr><td><b>OWASP Top 10</b></td><td>Lista das 10 categorias de risco mais importantes em aplicações web, mantida pela fundação OWASP. A versão vigente é a de 2025. O relatório mapeia cada achado para uma categoria.</td><td>A05:2025 = Injeção</td></tr>
+</table>
+
+<h3>Candidato, confirmado, falso positivo</h3>
+<p>As ferramentas automáticas "desconfiam" de muita coisa. Por isso o projeto usa estados (o campo <span class="mono">status</span>):</p>
+<table>
+  <tr><th style="width:22%">Status</th><th>Significado</th></tr>
+  <tr><td><span class="mono">candidate</span></td><td>Candidato: uma ferramenta apontou, ninguém verificou ainda. É o que sai das etapas 3 e 4.</td></tr>
+  <tr><td><span class="mono">confirmed</span></td><td>Confirmado: refizemos um teste e provamos que a falha existe.</td></tr>
+  <tr><td><span class="mono">likely</span></td><td>Provável: há indício forte, mas a prova não é 100% conclusiva.</td></tr>
+  <tr><td><span class="mono">unconfirmed</span></td><td>Não confirmado: não conseguimos provar com segurança. <b>Continua no relatório</b>, sinalizado.</td></tr>
+  <tr><td><span class="mono">false_positive</span></td><td>Falso positivo: uma checagem objetiva mostrou que a falha não existe (ex.: o cabeçalho "ausente" está, na verdade, presente).</td></tr>
+</table>
+<div class="box atencao"><b class="t">Atenção — por que "não confirmado" não vira "falso positivo"</b>Não conseguir provar uma falha não significa que ela não existe. Se descartássemos tudo que não conseguimos provar, esconderíamos falhas reais do cliente. Por isso, só uma checagem determinística (um teste objetivo, que dá sempre o mesmo resultado) ou uma pessoa podem marcar <span class="mono">false_positive</span>. A IA nunca pode.</div>
+
+<h3>Severidade</h3>
+<p>A gravidade de cada falha: <b>crítica</b>, <b>alta</b>, <b>média</b>, <b>baixa</b> ou <b>informativa</b>. Ela define a ordem no relatório: o cliente deve corrigir primeiro o que é mais grave.</p>
+
+<h3>Autorização e escopo</h3>
+<p>O <b>escopo</b> é a lista do que pode ser tocado: quais hosts (ex.: <span class="mono">loja.com.br</span>), quais caminhos podem ser incluídos e quais devem ser excluídos (ex.: <span class="mono">/logout</span>, para não derrubar a sessão; ou uma página que apaga dados). Sair do escopo pode significar atacar um site de terceiros — por isso o projeto checa o escopo em várias camadas.</p>
+
+<h3>Scan passivo e scan ativo</h3>
+<ul>
+  <li><b>Passivo</b>: só observa as respostas que o site já deu, sem enviar nada estranho. Ex.: "esta resposta não tem o cabeçalho de segurança X". É seguro e leve.</li>
+  <li><b>Ativo</b>: envia requisições modificadas de propósito para ver como o site reage (ex.: colocar um apóstrofo num campo para ver se o banco de dados dá erro). É o que encontra as falhas mais graves, mas consome recursos e precisa de cuidado para não causar dano.</li>
+</ul>
+
+<h3>As falhas que o projeto já sabe validar</h3>
+<h4>XSS refletido (Cross-Site Scripting) — CWE-79</h4>
+<p>O site pega um valor da URL e o coloca na página sem tratar. Se o valor for código, o navegador o executa. Um atacante manda para a vítima um link com código malicioso escondido no parâmetro; ao abrir, o código roda com a sessão da vítima. <b>Como provamos</b>: enviamos um marcador único e inofensivo (algo como <span class="mono">zx3fa1"&lt;zxtag&gt;</span>) e vemos se ele volta "cru" no HTML. Se volta, está confirmado. A correção é <b>escapar</b> a saída: transformar <span class="mono">&lt;</span> em <span class="mono">&amp;lt;</span>, para o navegador mostrar o texto em vez de interpretá-lo.</p>
+<h4>SQL injection — CWE-89</h4>
+<p>Sites guardam dados em bancos que usam a linguagem <b>SQL</b>. Se o site monta a consulta colando o valor digitado pelo usuário, alguém pode digitar pedaços de SQL e mudar a consulta — e ler ou apagar dados. <b>Como provamos</b>, sem risco: enviamos o valor normal, depois o mesmo valor com um apóstrofo (<span class="mono">1'</span>) e depois com dois (<span class="mono">1''</span>). Se só o apóstrofo único gera uma mensagem de erro do banco, a consulta está sendo montada de forma insegura. Nunca usamos comandos que leem ou alteram dados.</p>
+<h4>Cabeçalhos de segurança ausentes</h4>
+<p>Instruções que o servidor dá ao navegador: não deixar a página ser embutida em outro site (<span class="mono">X-Frame-Options</span>, contra <i>clickjacking</i>), não "adivinhar" o tipo de arquivo (<span class="mono">X-Content-Type-Options</span>), usar sempre HTTPS (<span class="mono">Strict-Transport-Security</span>), limitar de onde scripts podem vir (<span class="mono">Content-Security-Policy</span>). <b>Como provamos</b>: pedimos a página e olhamos o cabeçalho. É um teste totalmente objetivo — por isso, aqui, podemos marcar falso positivo.</p>
+<h4>Cookies sem proteção</h4>
+<p>Cookies podem ter atributos de proteção: <span class="mono">HttpOnly</span> (scripts não conseguem lê-lo), <span class="mono">Secure</span> (só trafega por HTTPS) e <span class="mono">SameSite</span> (não é enviado em requisições forjadas por outros sites). Checamos o cabeçalho <span class="mono">Set-Cookie</span> diretamente.</p>
+
+<!-- ============================== 5 ============================== -->
+<h2>5. As ferramentas de segurança: ZAP, nuclei e naabu</h2>
+<p>As três são <b>código aberto</b> (o código é público) com licenças que permitem embuti-las num produto comercial.</p>
+
+<h3>OWASP ZAP — a ferramenta da nossa etapa 4</h3>
+<p>O <b>ZAP</b> (<i>Zed Attack Proxy</i>) é um programa que testa a segurança de aplicações web. Normalmente uma pessoa o usa com tela, mas ele também roda em <b>modo daemon</b> (sem tela, em segundo plano) e é controlado por uma <b>API</b> — um conjunto de comandos que outro programa pode enviar pela rede. É assim que o nosso código o dirige.</p>
+<div class="box analogia"><b class="t">Analogia — o que é uma API</b>Uma API é como o cardápio e o garçom de um restaurante: você não entra na cozinha; escolhe um item do cardápio (um comando, como "rastreie este site") e o garçom traz o resultado. O ZAP é a cozinha; nosso código faz os pedidos.</div>
+<p>O que o nosso código pede ao ZAP, em ordem:</p>
+<ol>
+  <li><b>Sessão nova</b>: limpa tudo do scan anterior, para os alertas de dois clientes nunca se misturarem.</li>
+  <li><b>Modo protegido</b> e <b>contexto</b>: dizemos ao ZAP quais endereços estão no escopo; em modo protegido ele se recusa a atacar qualquer coisa fora dele.</li>
+  <li><b>Limites</b>: quantas conexões simultâneas, intervalo entre requisições e tempo máximo.</li>
+  <li><b>Política</b>: quais testes ativos estão ligados. Começamos com todos desligados e ligamos apenas uma lista de testes considerados seguros (ver capítulo 11).</li>
+  <li><b>Spider</b> (rastreador): segue os links do site para descobrir as páginas. O <b>AJAX spider</b> faz o mesmo usando um navegador real, para sites feitos em JavaScript.</li>
+  <li><b>Scan passivo</b>, depois <b>scan ativo</b>.</li>
+  <li><b>Coleta dos alertas</b>, com a requisição e a resposta que expuseram cada um.</li>
+</ol>
+
+<h3>nuclei — etapa 3 (de outro colega)</h3>
+<p>Uma ferramenta que testa milhares de "receitas" (<i>templates</i>) de falhas conhecidas. Os achados dela chegam até nós como candidatos, no mesmo formato dos do ZAP, e passam pela mesma validação.</p>
+<h3>naabu — etapa 2 (de outro colega)</h3>
+<p>Um <b>scanner de portas</b>: descobre quais portas estão abertas num servidor. Não usamos diretamente, mas as rotas descobertas nas etapas 2 e 3 podem ser passadas ao ZAP como ponto de partida.</p>
+
+<h3>Os alvos de laboratório: Juice Shop e DVWA</h3>
+<p>Para testar o scanner sem tocar em sites reais, usamos sites <b>propositalmente vulneráveis</b>, criados para treino: o <b>OWASP Juice Shop</b> (uma loja falsa cheia de falhas) e o <b>DVWA</b> (<i>Damn Vulnerable Web Application</i>). Eles rodam no seu próprio computador, isolados da internet.</p>
+<div class="box atencao"><b class="t">Atenção</b>Testes, exemplos e dados de exemplo usam <b>somente</b> esses alvos de laboratório. Nunca um site real, nem "só para ver".</div>
+
+<!-- ============================== 6 ============================== -->
+<h2>6. As ferramentas de desenvolvimento</h2>
+
+<h3>Python — a linguagem de programação</h3>
+<p>Todo o nosso código está escrito em <b>Python</b> (versão 3.13), uma linguagem conhecida por ser legível. Um programa em Python é um conjunto de arquivos de texto terminados em <span class="mono">.py</span>. Um exemplo real do projeto, simplificado:</p>
+<pre><span class="c"># Se o cabeçalho de segurança está presente, é falso positivo;</span>
+<span class="c"># se está ausente, a falha é confirmada.</span>
+if cabecalho_ok(resposta):
+    return resultado(FALSE_POSITIVE, "cabeçalho presente e válido")
+return resultado(CONFIRMED, "cabeçalho ausente ou inválido")</pre>
+<p>Alguns termos de Python que aparecem no projeto:</p>
+<ul>
+  <li><b>Função</b>: um bloco de código com nome, que recebe dados e devolve um resultado. Cada validador é uma função.</li>
+  <li><b>Módulo</b>: um arquivo <span class="mono">.py</span>. <b>Pacote</b>: uma pasta de módulos. Nosso pacote se chama <span class="mono">scanner</span>.</li>
+  <li><b>Biblioteca / dependência</b>: código escrito por outras pessoas que reaproveitamos (ex.: a biblioteca que fala com o ZAP).</li>
+  <li><b>Tipos</b>: anotações dizendo que tipo de dado cada coisa é (texto, número, lista...). Ajudam a pegar erros antes de rodar.</li>
+</ul>
+
+<h3>As bibliotecas que usamos</h3>
+<table>
+  <tr><th style="width:20%">Biblioteca</th><th>Para que serve no projeto</th></tr>
+  <tr><td><b>zaproxy</b></td><td>Conversar com a API do ZAP.</td></tr>
+  <tr><td><b>httpx</b></td><td>Fazer requisições HTTP (as provas da validação).</td></tr>
+  <tr><td><b>Pydantic</b></td><td>Definir o formato dos dados (um "molde") e rejeitar automaticamente o que não segue o molde. Ex.: um achado sem URL é recusado.</td></tr>
+  <tr><td><b>redis</b></td><td>Falar com o Redis, a fila de mensagens entre as etapas.</td></tr>
+  <tr><td><b>SQLAlchemy</b> e <b>psycopg</b></td><td>Falar com o banco de dados Postgres.</td></tr>
+  <tr><td><b>Alembic</b></td><td>Criar e evoluir as tabelas do banco com histórico (as "migrações").</td></tr>
+  <tr><td><b>anthropic</b></td><td>SDK oficial para chamar a IA Claude (capítulo 10).</td></tr>
+  <tr><td><b>Jinja2</b></td><td>Preencher um modelo de página HTML com os dados do relatório (como uma mala direta).</td></tr>
+  <tr><td><b>WeasyPrint</b></td><td>Transformar o HTML em PDF. (Este guia foi gerado com ela.)</td></tr>
+</table>
+
+<h3>uv — o gerenciador do projeto</h3>
+<p>O <b>uv</b> instala a versão certa do Python e de todas as bibliotecas, numa pasta isolada do projeto chamada <span class="mono">.venv</span> (ambiente virtual), sem bagunçar o resto do computador. A lista do que precisamos está no arquivo <span class="mono">pyproject.toml</span>; as versões exatas ficam travadas no <span class="mono">uv.lock</span>, para todo mundo ter exatamente o mesmo ambiente.</p>
+<pre>uv sync          <span class="c"># instala tudo o que o projeto precisa</span>
+uv run pytest    <span class="c"># roda um comando dentro do ambiente do projeto</span></pre>
+
+<h3>Ferramentas de qualidade: pytest, ruff e mypy</h3>
+<ul>
+  <li><b>pytest</b> roda os <b>testes automatizados</b>: pequenos programas que verificam se o código faz o que deveria. Ex.: "se a página devolve o marcador sem escape, o validador de XSS tem que dizer <i>confirmado</i>". Hoje são 45 testes, que rodam em cerca de 2 segundos. Se alguém quebrar algo sem querer, um teste falha e avisa.</li>
+  <li><b>ruff</b> é o "corretor ortográfico" do código: aponta erros comuns, padroniza a formatação e acusa práticas inseguras.</li>
+  <li><b>mypy</b> verifica os tipos: avisa, por exemplo, se em algum lugar passamos texto onde se esperava número.</li>
+</ul>
+<p>Existem dois tipos de teste no projeto: <b>unitários</b> (<span class="mono">tests/unit/</span>), que testam cada peça isolada, com respostas simuladas, sem rede; e de <b>integração</b> (<span class="mono">tests/integration/</span>), que testam contra o Juice Shop de verdade, rodando no laboratório.</p>
+
+<h3>Git — o histórico do projeto</h3>
+<p>O <b>Git</b> guarda o histórico de todas as mudanças do código. Cada "foto" salva é um <b>commit</b>, com descrição e autor. Dá para voltar atrás, comparar versões e trabalhar em paralelo com o time. O arquivo <span class="mono">.gitignore</span> lista o que <b>não</b> deve entrar no histórico — principalmente o <span class="mono">.env</span>, que contém senhas.</p>
+
+<h3>VS Code, WSL e o terminal</h3>
+<ul>
+  <li><b>VS Code</b>: o editor onde você abre e edita os arquivos do projeto.</li>
+  <li><b>Terminal</b>: a janela onde se digitam comandos de texto (como os que aparecem neste guia).</li>
+  <li><b>WSL2</b> (<i>Windows Subsystem for Linux</i>): um Linux (Ubuntu) rodando dentro do seu Windows. Usamos Linux porque servidores e o Docker funcionam melhor nele. O projeto mora em <span class="mono">~/scan_site</span>, <b>dentro</b> do Linux — e não no OneDrive nem em <span class="mono">/mnt/c</span>, onde ficaria lento e com conflitos de sincronização.</li>
+</ul>
+
+<h3>Arquivos de configuração e segredos (.env)</h3>
+<p>Senhas e chaves (do banco, do ZAP, da API da Claude) nunca são escritas no código. Ficam num arquivo <span class="mono">.env</span>, que existe só no seu computador/servidor e nunca vai para o Git. O arquivo <span class="mono">.env.example</span> é um modelo que lista quais variáveis existem, sem os valores reais.</p>
+
+<!-- ============================== 7 ============================== -->
+<h2>7. Docker, explicado com calma</h2>
+<h3>O problema que o Docker resolve</h3>
+<p>Para o projeto rodar, é preciso Python 3.13, dezenas de bibliotecas, as bibliotecas de sistema do WeasyPrint, o ZAP (que precisa de Java), o Redis e o Postgres — cada um na versão certa, configurado do jeito certo. Instalar tudo isso na mão em cada computador e em cada servidor é demorado e dá o clássico "na minha máquina funciona". O <b>Docker</b> resolve isso empacotando cada programa junto com tudo de que ele precisa.</p>
+<div class="box analogia"><b class="t">Analogia — o contêiner de navio</b>Antes dos contêineres, cada carga era embarcada de um jeito (sacos, caixas, barris). O contêiner padronizou: não importa o que vai dentro, o navio, o guindaste e o caminhão sabem lidar com ele. O Docker faz o mesmo com software: não importa se dentro está o ZAP, o Postgres ou nosso código — tudo roda do mesmo jeito em qualquer máquina que tenha Docker.</div>
+
+<h3>Imagem e container</h3>
+<ul>
+  <li>Uma <b>imagem</b> é o pacote pronto e congelado: sistema mínimo + programa + dependências. É como uma <b>receita com os ingredientes já separados</b>, ou o molde de um bolo.</li>
+  <li>Um <b>container</b> é uma imagem <b>em execução</b>. É o bolo assado a partir do molde. De uma mesma imagem podem sair vários containers.</li>
+</ul>
+<p>Cada container é isolado: tem seus próprios arquivos e sua própria rede, e só enxerga o que permitirmos. Isso também é uma camada de <b>segurança</b>.</p>
+
+<h3>Dockerfile — a receita da nossa imagem</h3>
+<p>O arquivo <span class="mono">Dockerfile</span> descreve, passo a passo, como montar a imagem do nosso código:</p>
+<pre>FROM python:3.13-slim                      <span class="c"># parte de um Linux mínimo com Python</span>
+RUN apt-get install ... libpango ...       <span class="c"># instala o que o WeasyPrint (PDF) precisa</span>
+RUN uv sync --no-dev                       <span class="c"># instala as bibliotecas do projeto</span>
+COPY scanner ./scanner                     <span class="c"># copia o nosso código para dentro</span>
+RUN useradd ... scanner                    <span class="c"># cria um usuário sem poderes de administrador</span>
+USER scanner                               <span class="c"># e passa a rodar como ele</span></pre>
+<p>Um detalhe importante: geramos <b>uma única imagem</b> com o pacote <span class="mono">scanner</span>, e os três "trabalhadores" (etapas 4, 5 e 6) usam essa mesma imagem, cada um com um comando diferente. Menos coisa para manter.</p>
+
+<h3>Docker Compose — vários containers juntos</h3>
+<p>Nosso sistema não é um container só, são vários que precisam conversar. O <b>Docker Compose</b> lê o arquivo <span class="mono">docker-compose.yml</span>, que descreve todos eles, e sobe tudo com um comando: <span class="mono">docker compose up -d</span>. Os containers (chamados de <b>serviços</b>) são:</p>
+<table>
+  <tr><th style="width:22%">Serviço</th><th>O que é</th></tr>
+  <tr><td><b>redis</b></td><td>A fila de mensagens entre as etapas (compartilhada com o time).</td></tr>
+  <tr><td><b>postgres</b></td><td>O banco de dados com scans, achados e relatórios (compartilhado com o time).</td></tr>
+  <tr><td><b>migrate</b></td><td>Roda uma vez ao subir: cria/atualiza as tabelas do banco e termina.</td></tr>
+  <tr><td><b>zap</b></td><td>O OWASP ZAP em modo daemon.</td></tr>
+  <tr><td><b>worker-web</b></td><td>Etapa 4: dirige o ZAP.</td></tr>
+  <tr><td><b>worker-validate</b></td><td>Etapa 5: deduplica e valida.</td></tr>
+  <tr><td><b>worker-report</b></td><td>Etapa 6: escreve e gera o relatório.</td></tr>
+</table>
+<p>Um <b>worker</b> ("trabalhador") é um programa que fica rodando o tempo todo, esperando tarefas na fila; quando chega uma, ele a executa e volta a esperar.</p>
+
+<h3>Redes: quem pode falar com quem</h3>
+<p>O Docker permite criar redes virtuais. Usamos duas, por segurança:</p>
+<div class="diagram">
+  <div class="zone">
+    <div class="label">Rede "internal" — sem saída para a internet</div>
+    <div class="row">
+      <div class="node q">redis</div><div class="node db">postgres</div><div class="node w">worker-web</div>
+    </div>
+    <div class="zone" style="border-color:#dc2626;">
+      <div class="label" style="color:#b91c1c;">Também na rede "egress" — podem sair para a internet</div>
+      <div class="row">
+        <div class="node w">zap<small>precisa alcançar o site do cliente</small></div>
+        <div class="node w">worker-validate<small>reenvia as provas ao site</small></div>
+        <div class="node w">worker-report<small>chama a API da Claude</small></div>
+      </div>
+    </div>
+  </div>
+</div>
+<p>Assim, se algum componente for comprometido, ele tem o mínimo de acesso possível. A API do ZAP, em especial, nunca é exposta para fora do computador (em produção): só os workers a enxergam. No laboratório existe ainda uma terceira rede, <span class="mono">lab</span>, onde ficam o Juice Shop e o DVWA, sem acesso à internet.</p>
+
+<h3>Volumes: o que sobrevive</h3>
+<p>Quando um container é apagado, tudo que estava dentro dele some. Para dados que precisam durar (o conteúdo do banco, por exemplo), usamos <b>volumes</b>: pastas guardadas fora do container. No nosso compose: <span class="mono">pg-data</span> (Postgres) e <span class="mono">redis-data</span> (Redis).</p>
+
+<h3>Limites de recursos</h3>
+<p>O scan ativo do ZAP consome muita memória (cerca de 3 GB). Por isso o container do ZAP tem limite de memória (<span class="mono">mem_limit: 4g</span>) e de processador (<span class="mono">cpus: 2</span>), e a máquina virtual Java dele recebe <span class="mono">-Xmx3g</span>. Sem isso, um scan pesado poderia travar o servidor inteiro.</p>
+
+<h3>Por que o ZAP e o worker-web andam em par</h3>
+<p>Cada worker-web tem o seu próprio ZAP e faz <b>um scan por vez</b>. Se dois clientes usassem o mesmo ZAP ao mesmo tempo, os alertas de um apareceriam no relatório do outro — um vazamento de dados. Para atender mais clientes ao mesmo tempo, sobe-se mais pares ZAP + worker-web.</p>
+
+<h3>Docker Desktop e o WSL</h3>
+<p>No Windows, o Docker vem pelo <b>Docker Desktop</b>. Para que ele funcione dentro do Ubuntu do WSL, é preciso ativar a integração: <i>Docker Desktop → Settings → Resources → WSL integration → ligar o Ubuntu</i>.</p>
+<div class="box atencao"><b class="t">Atenção — situação atual</b>No momento em que este guia foi escrito, o comando <span class="mono">docker</span> não estava disponível no seu Ubuntu, ou seja, essa integração ainda não está ligada. Até lá, dá para rodar os testes unitários com o uv, mas não subir os containers.</div>
+<div class="box resumo"><b class="t">Em uma frase</b>O Docker empacota cada peça do sistema com tudo de que ela precisa; o Compose sobe todas juntas, cada uma na rede certa e com os limites certos.</div>
+
+<!-- ============================== 8 ============================== -->
+<h2>8. Como as peças conversam: filas, banco e o "contrato"</h2>
+
+<h3>A fila (Redis Streams)</h3>
+<p>As etapas não chamam umas às outras diretamente. Cada uma deixa uma <b>mensagem</b> numa fila, e a etapa seguinte a pega quando puder. Usamos o <b>Redis</b>, um programa muito rápido que guarda dados na memória, com o recurso <b>Streams</b> (filas de mensagens).</p>
+<div class="box analogia"><b class="t">Analogia — a esteira de pedidos da cozinha</b>O garçom espeta o pedido no trilho; o cozinheiro pega quando está livre. Se o cozinheiro sair por um minuto, os pedidos não se perdem: ficam no trilho. E se ele derrubar um prato no meio do preparo, o pedido continua lá para ser refeito.</div>
+<p>As filas oficiais, em ordem:</p>
+<div class="diagram">
+  <div class="row"><div class="node q">scan.web.requested<small>"testem este site"</small></div></div>
+  <div class="down">↓ worker-web (etapa 4, com o ZAP)</div>
+  <div class="row"><div class="node q">scan.candidates<small>candidatos do ZAP e do nuclei</small></div></div>
+  <div class="down">↓ worker-validate (etapa 5)</div>
+  <div class="row"><div class="node q">scan.validated<small>"terminei de validar"</small></div></div>
+  <div class="down">↓ worker-report (etapa 6, com a Claude)</div>
+  <div class="row"><div class="node q">scan.report.ready<small>"o relatório está pronto"</small></div></div>
+</div>
+<p>Vantagens: cada etapa pode cair e voltar sem perder trabalho; dá para colocar mais workers numa etapa lenta; e cada colega do time pode escrever sua etapa em qualquer linguagem.</p>
+
+<h3>O formato JSON e o contrato</h3>
+<p>As mensagens são escritas em <b>JSON</b>, um formato de texto simples para dados estruturados, que qualquer linguagem entende. Um achado, resumido, é assim:</p>
+<pre>{
+  "finding_id": "9f2c...",              <span class="c">identificador único</span>
+  "scan_id": "scan-123",
+  "source": { "tool": "zap", "rule_id": "40012" },
+  "title": "Cross Site Scripting (Reflected)",
+  "cwe": 79,  "owasp": "A05:2025",
+  "severity": "medium",
+  "status": "confirmed",
+  "location": { "url": "http://juice-shop:3000/busca?q=x", "method": "GET", "parameter": "q" },
+  "evidence": [ { "request": {...}, "response": {...} } ]
+}</pre>
+<p>O <b>contrato</b> é o documento que define exatamente que campos existem e que valores são aceitos. Ele fica em <span class="mono">contracts/finding.schema.json</span> (o achado) e <span class="mono">contracts/message.schema.json</span> (o "envelope" de toda mensagem, que sempre leva <span class="mono">scan_id</span>, <span class="mono">target_id</span>, a etapa, a versão do contrato e o escopo). Esse formato de descrição se chama <b>JSON Schema</b>.</p>
+<div class="box atencao"><b class="t">Atenção</b>Mudar o contrato quebra o trabalho dos colegas. Toda mudança precisa ser combinada com o time e vem com o número de versão (<span class="mono">schema_version</span>) incrementado. Há um teste automatizado que garante que o nosso código continua seguindo o contrato.</div>
+
+<h3>Idempotência — a mesma mensagem duas vezes não duplica nada</h3>
+<p>Em sistemas com filas, às vezes a mesma mensagem é entregue duas vezes (por exemplo, se um worker cair logo depois de terminar). <b>Idempotente</b> é uma operação que, repetida, dá o mesmo resultado que feita uma vez. Garantimos isso de duas formas:</p>
+<ul>
+  <li>Cada mensagem tem um <span class="mono">message_id</span>; antes de processar, registramos no banco "esta mensagem já foi tratada". Se chegar de novo, é ignorada.</li>
+  <li>O <span class="mono">finding_id</span> de cada achado é calculado a partir dos próprios dados (scan, ferramenta, regra, URL, parâmetro) usando um <b>hash</b> — uma "impressão digital" matemática. O mesmo achado sempre gera o mesmo identificador, então não há como ele virar dois.</li>
+</ul>
+<p>Mensagens inválidas ou de scans não autorizados vão para uma fila separada, de rejeitadas (<i>dead-letter</i>), com os segredos mascarados, para alguém investigar.</p>
+
+<h3>O banco de dados (Postgres)</h3>
+<p>O <b>PostgreSQL</b> guarda os dados que precisam durar, organizados em <b>tabelas</b> (como planilhas com colunas fixas). Você, Ahmed, é o dono do <b>schema</b> (a estrutura das tabelas). As tabelas criadas são:</p>
+<table>
+  <tr><th style="width:26%">Tabela</th><th>O que guarda</th></tr>
+  <tr><td><span class="mono">scans</span></td><td>Cada scan, se o alvo foi verificado e o escopo travado. Escrita pela etapa 1; nós só lemos.</td></tr>
+  <tr><td><span class="mono">findings</span></td><td>Os achados, com status e severidade.</td></tr>
+  <tr><td><span class="mono">processed_messages</span></td><td>Quais mensagens já foram processadas (idempotência).</td></tr>
+  <tr><td><span class="mono">stage_progress</span></td><td>Quais ferramentas (ZAP, nuclei) já entregaram seus candidatos para cada scan.</td></tr>
+  <tr><td><span class="mono">reports</span></td><td>O relatório final em JSON, HTML e PDF.</td></tr>
+  <tr><td><span class="mono">remediation_cache</span></td><td>Textos de correção já gerados pela IA, para reaproveitar (economia).</td></tr>
+</table>
+<p><b>Migrações</b> (pasta <span class="mono">migrations/</span>, ferramenta Alembic) são os "roteiros" de criação e alteração dessas tabelas, numerados em ordem. Assim, qualquer banco, em qualquer máquina, chega exatamente à mesma estrutura. O container <span class="mono">migrate</span> aplica esses roteiros sempre que o sistema sobe.</p>
+
+<!-- ============================== 9 ============================== -->
+<h2>9. Passeio pelas etapas 4, 5 e 6 por dentro</h2>
+<p>Vamos acompanhar um scan do começo ao fim.</p>
+
+<h3>Etapa 4 — Teste web (<span class="mono">scanner/web_scan/</span>)</h3>
+<ol>
+  <li>O worker-web pega uma mensagem da fila <span class="mono">scan.web.requested</span>.</li>
+  <li><b>Checa a autorização</b> no banco (capítulo 11). Se falhar, recusa e registra.</li>
+  <li>Prepara o ZAP: sessão nova, contexto com o escopo, modo protegido, limites e política segura.</li>
+  <li>Se o cliente forneceu uma credencial de teste, o ZAP passa a enviá-la em toda requisição, para testar também a área logada.</li>
+  <li>Adiciona as rotas vindas das etapas 2/3 (só as que estão no escopo), roda spider, AJAX spider, scan passivo e ativo.</li>
+  <li>Se o tempo máximo estourar, interrompe e entrega o que já encontrou.</li>
+  <li>Converte cada alerta do ZAP num achado com <span class="mono">status: candidate</span>, com a requisição e a resposta (mascaradas), e publica em <span class="mono">scan.candidates</span>.</li>
+</ol>
+<p class="small">Arquivos: <span class="mono">zap.py</span> (conversa com o ZAP), <span class="mono">policy.py</span> (lista de testes seguros), <span class="mono">alerts.py</span> (alerta → achado), <span class="mono">service.py</span> (orquestra), <span class="mono">__main__.py</span> (liga o worker).</p>
+
+<h3>Etapa 5 — Validação (<span class="mono">scanner/validation/</span>)</h3>
+<ol>
+  <li>O worker-validate pega os candidatos (do ZAP e, separadamente, do nuclei) e checa a autorização.</li>
+  <li><b>Deduplicação</b> (<span class="mono">dedup.py</span>): se ZAP e nuclei acharam a mesma coisa (mesma URL, método, parâmetro e CWE), vira um achado só, que registra as duas fontes e fica com a maior severidade.</li>
+  <li><b>Escolha do validador</b>: há um validador por família de falha (pasta <span class="mono">validators/</span>), escolhido pela regra do ZAP, pelo template do nuclei ou pelo CWE.</li>
+  <li><b>Prova</b>: o validador refaz um teste seguro (capítulo 4) usando um cliente HTTP especial (<span class="mono">http.py</span>) que só aceita GET/HEAD, só dentro do escopo, sem seguir redirecionamentos e com limite de velocidade.</li>
+  <li>Se não existe validador para aquela falha, ou se a prova dá erro, o achado fica <span class="mono">unconfirmed</span> — nunca é descartado.</li>
+  <li><b>Severidade</b> (<span class="mono">severity.py</span>): falhas confirmadas recebem a severidade padrão do seu tipo (ex.: SQL injection confirmada = alta). Falhas não confirmadas nunca são rebaixadas.</li>
+  <li>Grava tudo no banco e avisa em <span class="mono">scan.validated</span> quais ferramentas já terminaram.</li>
+</ol>
+
+<h3>Etapa 6 — Relatório (<span class="mono">scanner/report/</span>)</h3>
+<ol>
+  <li>O worker-report só começa quando ZAP <b>e</b> nuclei já entregaram seus candidatos (e só se ainda não houver relatório para aquele scan).</li>
+  <li>Detecta a <b>stack</b> do site (as tecnologias: nginx, PHP, Express...) olhando os cabeçalhos das respostas (<span class="mono">stack.py</span>), para que a correção seja específica.</li>
+  <li>Para cada achado, busca o texto de correção: primeiro no <b>cache</b>; se não tiver, pede à <b>Claude</b>; se a IA recusar ou falhar, usa o <b>catálogo estático</b> (<span class="mono">catalog.py</span>), com textos prontos em português. Nenhum achado fica sem texto.</li>
+  <li>Monta o relatório em <b>JSON</b> (<span class="mono">builder.py</span>) — a fonte da verdade —, ordenado: confirmados primeiro, depois prováveis e não confirmados, do mais grave ao menos grave. Os falsos positivos ficam numa seção separada, "descartadas por verificação", com o motivo.</li>
+  <li>Gera o <b>HTML</b> a partir de um modelo (<span class="mono">templates/report.html.j2</span>) e o <b>PDF</b> a partir do HTML (<span class="mono">render.py</span>).</li>
+  <li>Grava no banco e publica em <span class="mono">scan.report.ready</span>.</li>
+</ol>
+<div class="box atencao"><b class="t">Atenção — o relatório contém "ataques"</b>As evidências podem conter código malicioso (justamente o que provou o XSS). Se o HTML do relatório mostrasse isso cru, o próprio relatório seria vulnerável. Por isso o modelo usa <b>escape automático</b> de tudo, e o gerador de PDF é proibido de baixar qualquer coisa da internet. Há um teste que verifica isso.</div>
+
+<!-- ============================== 10 ============================== -->
+<h2>10. A inteligência artificial (Claude) no relatório</h2>
+<h3>O que a IA faz — e o que ela não faz</h3>
+<p>A IA <b>só escreve a explicação e a correção</b> de cada tipo de falha. Ela <b>não decide</b> se uma falha existe, não muda status e não descarta nada. Isso é proposital: estudos mostram que modelos de linguagem tendem a "abafar" falhas verdadeiras, e esconder uma falha real do cliente é o pior erro possível para este produto.</p>
+
+<h3>Como chamamos a Claude</h3>
+<ul>
+  <li><b>Modelo</b>: <span class="mono">claude-opus-5-5</span>. Trocar de modelo é decisão do time.</li>
+  <li><b>SDK oficial</b> <span class="mono">anthropic</span>: a biblioteca da própria Anthropic para Python.</li>
+  <li><b>Saída estruturada</b>: em vez de pedir um texto livre e tentar "garimpar" as partes, entregamos à IA um molde (Pydantic) com os campos <i>o que é</i>, <i>por que importa</i>, <i>passos para corrigir</i> (cada um com comando ou código), <i>como verificar</i> e <i>referências</i>. A resposta já vem nesse formato, validada.</li>
+  <li><b>Thinking adaptativo</b> e <b>effort</b>: o modelo decide quanto "pensar" antes de responder; o <i>effort</i> (esforço) regula quão profundo ele vai. Usamos <span class="mono">high</span>, definido explicitamente.</li>
+  <li><b>Prompts versionados</b>: as instruções que damos à IA (o <b>prompt</b>) ficam em arquivos próprios em <span class="mono">scanner/report/prompts/</span>, com versão (<span class="mono">remediation_v1</span>). Mudou o texto, cria-se uma versão nova.</li>
+</ul>
+
+<h3>Privacidade: o que vai para a IA</h3>
+<p>Mandamos <b>apenas</b> o tipo da falha (título, CWE, categoria OWASP, regra da ferramenta), a stack detectada e o idioma. <b>Nunca</b> a URL do cliente, as evidências, cookies, tokens ou dados pessoais. Ainda assim, todo texto passa pelo mascaramento antes de sair.</p>
+
+<h3>Economia: cache</h3>
+<p>Como o texto de correção depende só do tipo da falha (e não do cliente), um XSS em site nginx em português tem sempre a mesma explicação. Guardamos cada resposta na tabela <span class="mono">remediation_cache</span>, com a chave (tipo de falha, stack, idioma, versão do prompt). O segundo cliente com a mesma falha não gera custo de IA. Além disso, usamos o <b>prompt caching</b> da API, que barateia a parte fixa das instruções quando ela se repete.</p>
+
+<h3>Quando a IA recusa</h3>
+<p>A Claude tem filtros de segurança, e um texto sobre vulnerabilidades pode ser recusado por engano (a resposta volta com <span class="mono">stop_reason == "refusal"</span>). Nesse caso — e também em erro de rede, limite de uso ou resposta incompleta — o sistema usa o catálogo estático. Recusas não entram no cache, para tentar a IA de novo na próxima vez.</p>
+
+<!-- ============================== 11 ============================== -->
+<h2>11. As regras de ouro e como o código as garante</h2>
+<p>O CLAUDE.md lista cinco regras que nunca podem ser quebradas. Veja onde cada uma é protegida:</p>
+
+<h3>1. Nenhum scan sem autorização</h3>
+<p>Arquivo <span class="mono">scanner/common/authz.py</span>. Antes de qualquer etapa trabalhar, o código confere <b>no banco</b> (e não só na mensagem) que: o scan existe; o alvo bate; a etapa 1 marcou o alvo como verificado; o escopo está travado; e o escopo da mensagem é idêntico ao travado no banco (para ninguém "esticar" o escopo no caminho). Se algo falhar, a tarefa é recusada e registrada. Não existe "modo de teste" que pule isso.</p>
+
+<h3>2. Nunca sair do escopo</h3>
+<p>Três camadas: (a) o ZAP recebe um contexto com apenas os endereços permitidos e roda em modo protegido; (b) alertas fora do escopo são jogados fora; (c) o cliente HTTP da validação (<span class="mono">ScopeGuard</span>, em <span class="mono">scanner/common/scope.py</span>) recusa qualquer URL fora do escopo e não segue redirecionamentos, que poderiam levar a outro site.</p>
+
+<h3>3. Não causar dano</h3>
+<ul>
+  <li>A política do ZAP liga só uma lista de testes seguros. Ficaram de fora, por exemplo: testes que <b>gravam dados</b> no site (XSS persistente), que fazem o site <b>acessar a internet</b> (SSRF, Log4Shell), que são <b>pesados como um ataque de negação de serviço</b> (estouro de buffer, SQL injection por tempo) e que usam métodos que alteram dados.</li>
+  <li>Limites de conexões, de requisições por segundo e de tempo total.</li>
+  <li>As provas da validação só leem (GET/HEAD) e usam testes inofensivos.</li>
+</ul>
+
+<h3>4. Teste local só contra laboratório</h3>
+<p>O <span class="mono">docker-compose.lab.yml</span> sobe o Juice Shop e o DVWA numa rede isolada. Todos os exemplos e testes do projeto usam esses alvos.</p>
+
+<h3>5. Dados do cliente são sensíveis</h3>
+<p>Arquivo <span class="mono">scanner/common/masking.py</span>. Mascara cabeçalhos sensíveis (Cookie, Authorization...), tokens, senhas, JWTs, e-mails, CPFs e números de cartão. É aplicado nos logs, nas evidências, nas mensagens rejeitadas, no que vai para a IA e no relatório.</p>
+
+<h3>Logs</h3>
+<p><b>Logs</b> são o "diário de bordo" do programa: registros do que aconteceu, usados para investigar problemas. Os nossos são em JSON (fáceis de pesquisar), sempre trazem o <span class="mono">scan_id</span> e passam pelo mascaramento antes de serem escritos.</p>
+
+<!-- ============================== 12 ============================== -->
+<h2>12. Mapa de pastas e arquivos</h2>
+<table>
+  <tr><th style="width:34%">Caminho</th><th>O que é</th></tr>
+  <tr><td><span class="mono">CLAUDE.md</span></td><td>As instruções do projeto: regras, arquitetura, convenções.</td></tr>
+  <tr><td><span class="mono">docs/</span></td><td>Documentos (o PDF do processo e este guia).</td></tr>
+  <tr><td><span class="mono">pyproject.toml</span>, <span class="mono">uv.lock</span></td><td>Lista e versões travadas das bibliotecas; configurações do ruff, mypy e pytest.</td></tr>
+  <tr><td><span class="mono">Dockerfile</span>, <span class="mono">.dockerignore</span></td><td>Receita da imagem Docker e o que não entra nela.</td></tr>
+  <tr><td><span class="mono">docker-compose.yml</span></td><td>Todos os serviços do sistema.</td></tr>
+  <tr><td><span class="mono">docker-compose.lab.yml</span></td><td>Alvos de laboratório + container de testes de integração.</td></tr>
+  <tr><td><span class="mono">.env.example</span></td><td>Modelo das configurações e segredos (copiar para <span class="mono">.env</span>).</td></tr>
+  <tr><td><span class="mono">contracts/</span></td><td>O contrato com o time (JSON Schema do achado e da mensagem).</td></tr>
+  <tr><td><span class="mono">alembic.ini</span>, <span class="mono">migrations/</span></td><td>Estrutura do banco e seu histórico.</td></tr>
+  <tr><td><span class="mono">scanner/common/</span></td><td>Peças compartilhadas: modelos de dados, configuração, fila, banco, autorização, escopo, mascaramento, logs, mapa OWASP.</td></tr>
+  <tr><td><span class="mono">scanner/web_scan/</span></td><td>Etapa 4 (ZAP).</td></tr>
+  <tr><td><span class="mono">scanner/validation/</span></td><td>Etapa 5 (dedup, cliente HTTP seguro, severidade, <span class="mono">validators/</span>).</td></tr>
+  <tr><td><span class="mono">scanner/report/</span></td><td>Etapa 6 (catálogo, IA, cache, montagem, <span class="mono">prompts/</span>, <span class="mono">templates/</span>).</td></tr>
+  <tr><td><span class="mono">tests/unit/</span></td><td>Testes de cada peça isolada.</td></tr>
+  <tr><td><span class="mono">tests/integration/</span></td><td>Testes contra o laboratório.</td></tr>
+  <tr><td><span class="mono">.gitignore</span></td><td>O que nunca entra no Git (<span class="mono">.env</span>, ambiente virtual, relatórios locais).</td></tr>
+</table>
+<p>Em cada pasta de etapa, o arquivo <span class="mono">__main__.py</span> é o "botão de ligar" do worker (é ele que o comando <span class="mono">python -m scanner.validation</span> executa) e o <span class="mono">service.py</span> contém a sequência de passos da etapa.</p>
+
+<!-- ============================== 13 ============================== -->
+<h2>13. Como rodar o projeto, passo a passo</h2>
+<p>Todos os comandos abaixo são digitados no terminal do Ubuntu (WSL).</p>
+
+<h3>Abrir o projeto</h3>
+<pre>cd ~/scan_site      <span class="c"># entra na pasta do projeto</span>
+code .              <span class="c"># abre no VS Code</span></pre>
+
+<h3>Rodar os testes e as verificações (já funciona hoje)</h3>
+<pre>uv sync                                         <span class="c"># instala/atualiza as dependências</span>
+uv run pytest                                   <span class="c"># roda os testes unitários</span>
+uv run ruff format . &amp;&amp; uv run ruff check .      <span class="c"># formata e revisa o código</span>
+uv run mypy                                     <span class="c"># verifica os tipos</span></pre>
+<p>O resultado esperado do pytest é algo como <span class="mono">45 passed, 1 skipped</span> ("45 passaram, 1 pulado" — o pulado é o de integração, que só roda no laboratório). Se aparecer <span class="mono">failed</span>, algo quebrou e a mensagem diz onde.</p>
+<p class="small">Se o terminal disser que <span class="mono">uv</span> não existe, rode <span class="mono">source ~/.local/bin/env</span> (ou abra um terminal novo): o uv foi instalado em <span class="mono">~/.local/bin</span>.</p>
+
+<h3>Subir o sistema com Docker (depois de ligar a integração do WSL)</h3>
+<pre>cp .env.example .env            <span class="c"># uma vez só; depois edite o .env e troque as senhas</span>
+docker compose up -d            <span class="c"># sobe tudo em segundo plano (-d)</span>
+docker compose ps               <span class="c"># mostra quais containers estão rodando</span>
+docker compose logs -f worker-validate   <span class="c"># acompanha os logs de um serviço</span>
+docker compose down             <span class="c"># desliga tudo (os volumes com os dados ficam)</span></pre>
+
+<h3>Laboratório e testes de integração</h3>
+<pre>docker compose -f docker-compose.yml -f docker-compose.lab.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.lab.yml --profile test run --rm tests</pre>
+<p>O primeiro comando sobe o sistema mais os alvos vulneráveis; o segundo roda os testes de integração dentro da rede do laboratório (ex.: confirmar a SQL injection conhecida da busca do Juice Shop).</p>
+
+<h3>Banco de dados</h3>
+<pre>uv run alembic revision -m "descricao"   <span class="c"># cria um novo roteiro de migração</span></pre>
+<p>As migrações são aplicadas automaticamente pelo container <span class="mono">migrate</span> sempre que o sistema sobe.</p>
+
+<!-- ============================== 14 ============================== -->
+<h2>14. O que ainda está pendente</h2>
+<h3>Para combinar com o time</h3>
+<ol>
+  <li><b>Formato do escopo</b> que vem da etapa 1. Criamos um formato provisório (hosts permitidos, URLs de partida, caminhos incluídos e excluídos); precisa ser confirmado.</li>
+  <li><b>Como a etapa 3 (nuclei) avisa que terminou.</b> Hoje o relatório espera que ZAP e nuclei tenham entregado seus candidatos (configurável em <span class="mono">REPORT_REQUIRED_TOOLS</span>).</li>
+  <li><b>Credenciais de teste.</b> Hoje vão no conteúdo da mensagem e só no formato de cabeçalho. O ideal é a mensagem levar só uma referência, e a senha ficar num cofre de segredos.</li>
+</ol>
+<h3>Ainda não testado na prática</h3>
+<ul>
+  <li>Os containers e a conversa real com o ZAP ainda não rodaram, porque o Docker não está ligado no WSL. Os testes unitários passam, mas o primeiro scan de verdade contra o Juice Shop é o próximo passo importante.</li>
+</ul>
+<h3>Decisões que podem ser revistas</h3>
+<ul>
+  <li><b>Provas só em GET.</b> Falhas em formulários POST ficam como "não confirmadas", por segurança. Pode ser ampliado com cuidado.</li>
+  <li><b>Poucos validadores.</b> Há validadores para XSS refletido, SQL injection por erro, cabeçalhos e cookies. Outras famílias (path traversal, open redirect...) ainda saem como "não confirmadas" até ganharem o seu.</li>
+  <li><b>Sem troca automática de modelo de IA quando ele recusa.</b> A API oferece isso, mas o CLAUDE.md pede o catálogo estático e diz que trocar de modelo é decisão do time.</li>
+  <li><b>O cache das instruções fixas da IA pode não estar funcionando ainda</b>, porque o texto é curto (há um tamanho mínimo para o cache funcionar). Dá para conferir pelos logs.</li>
+</ul>
+
+<!-- ============================== 15 ============================== -->
+<h2>15. Glossário</h2>
+<dl class="gloss">
+  <dt>Achado (finding)</dt><dd>Registro de uma possível falha de segurança.</dd>
+  <dt>AJAX spider</dt><dd>Rastreador do ZAP que usa um navegador real, para sites montados em JavaScript.</dd>
+  <dt>API</dt><dd>Conjunto de comandos que um programa oferece para outro programa usar.</dd>
+  <dt>Autorização</dt><dd>Permissão formal do dono do site para testá-lo (etapa 1).</dd>
+  <dt>Banco de dados</dt><dd>Programa que guarda dados de forma organizada e permanente (usamos o Postgres).</dd>
+  <dt>Biblioteca / dependência</dt><dd>Código de terceiros reaproveitado no projeto.</dd>
+  <dt>Cabeçalho (header)</dt><dd>Linha de informação extra numa requisição ou resposta HTTP.</dd>
+  <dt>Cache</dt><dd>Guardar um resultado para reaproveitar em vez de recalcular.</dd>
+  <dt>Candidato</dt><dd>Achado ainda não verificado.</dd>
+  <dt>Catálogo estático</dt><dd>Textos de correção prontos, usados quando a IA não responde.</dd>
+  <dt>Clickjacking</dt><dd>Embutir um site invisível em outro para induzir cliques.</dd>
+  <dt>Commit</dt><dd>Uma "foto" salva das mudanças no Git.</dd>
+  <dt>Container</dt><dd>Uma imagem Docker em execução, isolada.</dd>
+  <dt>Contexto (ZAP)</dt><dd>Definição, dentro do ZAP, de quais endereços pertencem ao alvo.</dd>
+  <dt>Contrato</dt><dd>O formato combinado dos dados trocados entre as etapas.</dd>
+  <dt>Cookie</dt><dd>Pequeno texto que o site guarda no navegador para lembrar do usuário.</dd>
+  <dt>CVE</dt><dd>Identificador de uma falha específica de um produto específico.</dd>
+  <dt>CWE</dt><dd>Identificador de um tipo de falha.</dd>
+  <dt>Daemon</dt><dd>Programa que roda em segundo plano, sem tela.</dd>
+  <dt>Dead-letter</dt><dd>Fila para onde vão as mensagens rejeitadas.</dd>
+  <dt>Deduplicação</dt><dd>Juntar achados repetidos em um só.</dd>
+  <dt>Determinístico</dt><dd>Que dá sempre o mesmo resultado para a mesma entrada.</dd>
+  <dt>DNS</dt><dd>Sistema que traduz nomes de sites em endereços numéricos.</dd>
+  <dt>Docker / Docker Compose</dt><dd>Ferramenta que empacota e roda programas em containers / que sobe vários containers juntos.</dd>
+  <dt>Dockerfile</dt><dd>Receita para montar uma imagem Docker.</dd>
+  <dt>Escapar (escape)</dt><dd>Transformar caracteres especiais para que sejam exibidos como texto, e não interpretados.</dd>
+  <dt>Escopo</dt><dd>O que pode e o que não pode ser testado.</dd>
+  <dt>Evidência</dt><dd>A requisição e a resposta que mostram a falha.</dd>
+  <dt>Falso positivo</dt><dd>Alerta de falha que, verificado, não existe.</dd>
+  <dt>Git</dt><dd>Sistema de histórico de versões do código.</dd>
+  <dt>Hash</dt><dd>"Impressão digital" matemática de um dado; o mesmo dado sempre gera o mesmo hash.</dd>
+  <dt>HTML</dt><dd>Linguagem que descreve o conteúdo das páginas web.</dd>
+  <dt>HTTP / HTTPS</dt><dd>Protocolo de conversa entre navegador e servidor / a versão criptografada.</dd>
+  <dt>Idempotente</dt><dd>Que pode ser repetido sem mudar o resultado.</dd>
+  <dt>Imagem (Docker)</dt><dd>Pacote congelado com um programa e tudo de que ele precisa.</dd>
+  <dt>JSON / JSON Schema</dt><dd>Formato de texto para dados estruturados / a forma de descrever as regras desse formato.</dd>
+  <dt>LLM</dt><dd>"Modelo de linguagem grande": o tipo de IA da Claude.</dd>
+  <dt>Log</dt><dd>Registro do que o programa fez.</dd>
+  <dt>Mascarar</dt><dd>Trocar dados sensíveis por <span class="mono">***</span> ou marcadores.</dd>
+  <dt>Método HTTP</dt><dd>Tipo de requisição: GET (ler), POST (enviar), PUT/DELETE (alterar/apagar).</dd>
+  <dt>Migração</dt><dd>Roteiro numerado que cria ou altera tabelas do banco.</dd>
+  <dt>OWASP / OWASP Top 10</dt><dd>Fundação de segurança web / sua lista dos 10 maiores riscos.</dd>
+  <dt>Parâmetro</dt><dd>Valor enviado junto com a requisição (ex.: <span class="mono">?q=camiseta</span>).</dd>
+  <dt>Porta</dt><dd>Número que identifica um serviço dentro de um servidor.</dd>
+  <dt>Prompt</dt><dd>As instruções e dados enviados à IA.</dd>
+  <dt>Pydantic</dt><dd>Biblioteca que define moldes de dados e rejeita o que não se encaixa.</dd>
+  <dt>Python</dt><dd>A linguagem de programação do projeto.</dd>
+  <dt>Redirecionamento</dt><dd>Resposta que manda o navegador para outro endereço.</dd>
+  <dt>Redis / Streams</dt><dd>Programa de dados em memória / seu recurso de filas de mensagens.</dd>
+  <dt>Rede (Docker)</dt><dd>Rede virtual que define quais containers se enxergam e quais saem para a internet.</dd>
+  <dt>Requisição / resposta</dt><dd>O pedido do navegador / o retorno do servidor.</dd>
+  <dt>SaaS</dt><dd>Software vendido como serviço pela internet.</dd>
+  <dt>Scan passivo / ativo</dt><dd>Só observar / enviar requisições modificadas para testar.</dd>
+  <dt>Schema</dt><dd>A estrutura das tabelas do banco (ou de um formato de dados).</dd>
+  <dt>SDK</dt><dd>Kit de bibliotecas oficial para usar um serviço (ex.: a API da Claude).</dd>
+  <dt>Servidor</dt><dd>Computador que responde aos pedidos dos clientes.</dd>
+  <dt>Sessão (ZAP)</dt><dd>O "caderno" de um scan dentro do ZAP; criamos um novo a cada scan.</dd>
+  <dt>Severidade</dt><dd>Gravidade de uma falha (crítica a informativa).</dd>
+  <dt>SPA</dt><dd>Site montado pelo JavaScript no navegador.</dd>
+  <dt>Spider</dt><dd>Rastreador que segue links para descobrir as páginas de um site.</dd>
+  <dt>SQL / SQL injection</dt><dd>Linguagem dos bancos de dados / falha que permite alterar as consultas ao banco.</dd>
+  <dt>Stack</dt><dd>O conjunto de tecnologias de um site (servidor, linguagem, framework).</dd>
+  <dt>Status code</dt><dd>Número que resume o resultado de uma requisição (200, 404, 500...).</dd>
+  <dt>Teste unitário / de integração</dt><dd>Testa uma peça isolada / testa as peças funcionando juntas, de verdade.</dd>
+  <dt>Token</dt><dd>Código que prova a identidade de alguém; tão sensível quanto uma senha.</dd>
+  <dt>URL</dt><dd>Endereço completo de uma página.</dd>
+  <dt>uv</dt><dd>Ferramenta que instala o Python e as bibliotecas do projeto.</dd>
+  <dt>Validação</dt><dd>Etapa que prova se uma falha é real.</dd>
+  <dt>Volume (Docker)</dt><dd>Pasta guardada fora do container, para os dados sobreviverem.</dd>
+  <dt>Vulnerabilidade</dt><dd>Defeito que permite a alguém fazer o que não deveria.</dd>
+  <dt>Worker</dt><dd>Programa que fica esperando tarefas numa fila e as executa.</dd>
+  <dt>WSL</dt><dd>Linux rodando dentro do Windows.</dd>
+  <dt>XSS</dt><dd>Falha em que o site devolve código do atacante, que roda no navegador da vítima.</dd>
+  <dt>ZAP</dt><dd>Ferramenta da OWASP que testa a segurança de aplicações web; usada na etapa 4.</dd>
+</dl>
+
+</body>
+</html>

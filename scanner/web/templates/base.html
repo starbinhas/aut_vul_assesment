@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false, "selfRequestsOnly": true}'>
+<title>{% block title %}Scanner{% endblock %} · Pitchy</title>
+<link rel="icon" href="/static/img/pitchy-icone.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/css/app.css">
+<script src="/static/js/htmx.min.js" defer></script>
+<script src="/static/js/app.js" defer></script>
+</head>
+<body hx-headers='{"{{ csrf_header }}": "{{ csrf }}"}'>
+{% block body %}
+<header class="topbar">
+  <nav class="nav" aria-label="Principal">
+    <a class="logo" href="/painel" aria-label="Pitchy, início">
+      <img src="/static/img/pitchy.svg" alt="Pitchy" width="70" height="18">
+      <span class="product">Scanner</span>
+    </a>
+    {% set nav = [("/painel", "Visão geral"), ("/sites", "Sites")] %}
+    {% for href, label in nav %}
+      <a class="item" href="{{ href }}" {% if path == href or (href != "/painel" and path.startswith(href)) %}aria-current="page"{% endif %}>{{ label }}</a>
+    {% endfor %}
+    {% if viewer and viewer.is_admin %}
+      <span class="sep" aria-hidden="true"></span>
+      <span class="admin-tag">Admin</span>
+      {% for href, label in [("/admin", "Operação"), ("/admin/clientes", "Clientes"), ("/admin/scans", "Scans"), ("/admin/auditoria", "Auditoria")] %}
+        <a class="item" href="{{ href }}" {% if path == href or (href != "/admin" and path.startswith(href)) %}aria-current="page"{% endif %}>{{ label }}</a>
+      {% endfor %}
+    {% endif %}
+    <span class="sep" aria-hidden="true"></span>
+    <a class="item" href="/conta" {% if path == "/conta" %}aria-current="page"{% endif %}>{{ viewer.name.split(" ")[0] if viewer else "Conta" }}</a>
+    <form method="post" action="/sair"><input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}"><button class="btn small ghost" type="submit">Sair</button></form>
+  </nav>
+</header>
+<main class="shell">
+  {% block content %}{% endblock %}
+  <footer class="footer">
+    <span>{% if org_name %}{{ org_name }}{% elif viewer and viewer.is_admin %}Equipe Pitchy{% endif %}</span>
+    <span>Testamos só sites cujo domínio foi comprovado pelo dono.</span>
+  </footer>
+</main>
+{% endblock %}
+</body>
+</html>

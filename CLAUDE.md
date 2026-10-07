@@ -10,8 +10,9 @@ acionável. O fluxo completo tem 7 etapas (ver `docs/processo-scan-etapa-por-eta
 1 Autorização → 2 Reconhecimento (naabu) → 3 CVEs (nuclei) → **4 Web (OWASP ZAP)** →
 **5 Validação** → **6 Relatório + LLM** → 7 Recorrência
 
-**Este repositório cobre as etapas 4, 5 e 6.** As etapas 1–3 e 7 são de outros membros do time;
-falamos com elas só pelo contrato de dados (ver "Contrato entre etapas").
+**Este repositório cobre as etapas 4, 5 e 6 e a interface web** (área do cliente e área admin).
+As etapas 1–3 e 7 são de outros membros do time; falamos com elas só pelo contrato de dados (ver
+"Contrato entre etapas").
 
 ## Regras que nunca podem ser quebradas
 
@@ -20,9 +21,13 @@ falamos com elas só pelo contrato de dados (ver "Contrato entre etapas").
    adicione um "modo de teste" que pule essa checagem contra alvos reais.
 2. **Nunca sair do escopo.** O ZAP só pode tocar hosts/caminhos do escopo (contexto do ZAP com
    include/exclude gerados a partir do escopo). Redirecionamentos para fora do escopo não são seguidos.
-3. **Não causar dano.** Política de scan sem regras destrutivas, limite de threads/requisições por
-   segundo e tempo máximo por scan. A validação (etapa 5) usa provas não destrutivas: nada de
-   apagar/alterar dados, nada de DoS, nada de extrair dados reais além do mínimo para provar.
+3. **Não causar dano a site de cliente.** Perfis de scan (`scanner/web_scan/policy.py`): `safe` e
+   `balanced` não têm regras destrutivas e podem rodar em cliente; `aggressive` (regras que gravam
+   dados, SSRF/RFI, DoS) **só roda contra hosts de laboratório** — a trava está em
+   `web_scan/service.py` (`resolve_profile`) contra `settings.lab_hosts`, e recusa o perfil contra
+   qualquer outro alvo. Sempre valem: limite de threads/requisições por segundo e tempo máximo. A
+   validação (etapa 5) usa provas não destrutivas: nada de apagar/alterar dados, nada de DoS, nada
+   de extrair dados reais além do mínimo para provar.
 4. **Teste local só contra alvos de laboratório** (`docker-compose.lab.yml`: OWASP Juice Shop,
    DVWA etc.). Nunca use sites reais em testes, exemplos ou fixtures.
 5. **Dados do cliente são sensíveis.** Credenciais de teste, cookies e tokens nunca vão para logs,
@@ -34,6 +39,12 @@ falamos com elas só pelo contrato de dados (ver "Contrato entre etapas").
 - Entra: alvo + escopo + rotas descobertas nas etapas 2/3 (+ credenciais de teste opcionais).
 - Faz: dirige o ZAP via API (spider tradicional + AJAX spider para SPAs, scan passivo, scan ativo
   com política controlada). Áreas logadas só se o cliente forneceu credenciais.
+- Perfil do scan vem no `payload.profile` da mensagem (`safe` por padrão). `safe`/`balanced` em
+  cliente; `aggressive` só laboratório (trava em `resolve_profile`). Na interface, o agressivo só
+  aparece para **admin** e só em **site de laboratório** (`web/services.py`, `profiles_for`, conferido
+  de novo em `start_scan` contra POST forjado); cliente nunca o vê. Também sai pela CLI de
+  laboratório (`tests/lab_scan.py --profile`). "Laboratório" tem uma definição só:
+  `policy.is_lab_scope` contra `settings.lab_hosts`.
 - Sai: candidatos a falha (`status: candidate`) no formato do contrato, cada um com a requisição e a
   resposta que o expuseram.
 - Um scan = uma sessão nova do ZAP (`core.new_session`) e um contexto próprio. Nunca rodar dois
@@ -61,6 +72,43 @@ falamos com elas só pelo contrato de dados (ver "Contrato entre etapas").
 - O valor é a correção executável, não o visual. Toda remediação precisa ser concreta (comando,
   config ou trecho de código), não genérica.
 
+### Interface web (`scanner/web/`)
+- Duas áreas pelo nível de acesso, na mesma aplicação:
+  - **Cliente** (`role = client`): vê só o que é da própria organização — sites, verificação de
+    domínio, scans, achados agrupados, relatório, comparação com o scan anterior.
+  - **Admin** (`role = admin`): tudo que o cliente vê, de todas as organizações, mais as telas do
+    time — clientes e usuários, operação (filas, rejeitadas), revisão humana de achados, auditoria.
+- **Isolamento entre clientes é regra de segurança**: toda consulta passa por `scanner/web/tenancy.py`.
+  Objeto de outra organização responde 404 (não 403, para não revelar que existe).
+- A interface só **mostra** o relatório: lê o `report_json` (fonte da verdade). Revisão humana muda o
+  achado no banco e pede um relatório novo ao worker-report; a interface nunca chama o LLM.
+- Só a revisão humana (admin) pode marcar `false_positive` fora da validação determinística, e
+  sempre com motivo registrado na auditoria.
+- Stack: FastAPI + Jinja2 + HTMX (sem build de front-end). Sem CDN: fontes, JS e imagens servidos
+  pela própria aplicação, com CSP estrita.
+- A interface é o primeiro alvo de quem quiser atacar o produto: senha com Argon2id, cookie de
+  sessão `HttpOnly`/`SameSite`, token CSRF em todo POST, bloqueio após tentativas de login,
+  cabeçalhos de segurança. Ela tem de passar no nosso próprio scanner.
+
+#### Identidade visual e "não parecer IA"
+- Marca Pitchy (https://pitchy.me): fundo quase preto, General Sans em pesos leves, navegação em
+  pílula, botão principal branco; logo azul `#1F62B5`; acento `#d8ff3e` só para ação principal e
+  foco. Tokens em `scanner/web/static/css/app.css`.
+- Mono maiúsculo espaçado (assinatura da marca) **só** no caminho do topo da página. Rótulos,
+  cabeçalhos de tabela, selos e pílulas em texto normal, em frase. Mono só para o que é da máquina:
+  URL, requisição, código, registro DNS.
+- Elemento de assinatura: o **recibo da prova** (macro `proof`) — o que enviamos e o que o site
+  respondeu, borda na cor da severidade. É o diferencial do produto; não criar outros destaques.
+- O topo do painel é o **próximo passo** ("Corrija primeiro a X em Y"), não blocos de números.
+- Proibido: degradês decorativos, Inter/Roboto, emoji na interface, ícones genéricos enfeitando
+  título, três cards de "benefícios", blocos de "número grande + legenda", metadados separados por
+  "·", numeração 01/02 fora de sequências reais, sombras e brilhos em tudo, textos vagos
+  ("potencialize sua segurança"). Cor só com função: severidade, estado, ação.
+- Telas novas: usar o plugin `frontend-design` e conferir com captura de tela antes de entregar.
+- Textos curtos, concretos, em pt-BR, na voz da Pitchy ("3 falhas novas desde o último scan").
+- Primeiro o que importa: o que mudou → o que corrigir agora → histórico. A mesma falha em várias
+  páginas aparece **uma vez**, com "afeta N páginas".
+
 ## Arquitetura e containers
 
 Tudo roda em Docker. Um único pacote Python (`scanner`) gera **uma imagem** usada pelos três
@@ -73,7 +121,8 @@ services (docker-compose.yml)
 ├── zap              zaproxy/zap-stable em modo daemon (API só na rede interna, com API key)
 ├── worker-web       etapa 4  →  python -m scanner.web_scan
 ├── worker-validate  etapa 5  →  python -m scanner.validation
-└── worker-report    etapa 6  →  python -m scanner.report
+├── worker-report    etapa 6  →  python -m scanner.report
+└── web              interface →  python -m scanner.web (única porta publicada)
 ```
 
 - **ZAP e worker-web andam em par** (1 ZAP por worker-web, um scan por vez). Para escalar, aumente
@@ -105,7 +154,9 @@ Mensagens em Redis Streams, payload JSON, independente de linguagem (os colegas 
   passa por este repositório.
 - Os nomes dos streams acima são os oficiais.
 
-> **Pendente de alinhar com o time:** formato exato do escopo que vem da etapa 1.
+> **Pendente de alinhar com o time:** formato exato do escopo que vem da etapa 1; quem verifica o
+> domínio (hoje a tela de sites faz a checagem DNS TXT); quem dispara as etapas 2/3 quando o cliente
+> inicia um scan (hoje a interface publica só `scan.web.requested`).
 
 ## LLM (etapa 6)
 
@@ -135,7 +186,8 @@ Mensagens em Redis Streams, payload JSON, independente de linguagem (os colegas 
 │   ├── common/                 modelos, cliente de fila, logging, mascaramento
 │   ├── web_scan/               etapa 4
 │   ├── validation/             etapa 5 (um módulo por família de falha)
-│   └── report/                 etapa 6 (prompts/, templates/ HTML, geração de PDF)
+│   ├── report/                 etapa 6 (prompts/, templates/ HTML, geração de PDF)
+│   └── web/                    interface (rotas cliente/admin, templates/, static/)
 └── tests/
     ├── unit/
     └── integration/            rodam contra docker-compose.lab.yml
@@ -150,12 +202,17 @@ Mensagens em Redis Streams, payload JSON, independente de linguagem (os colegas 
 
 ## Comandos
 
-> Preencher conforme o projeto for criado.
-
 ```bash
-docker compose up -d                                     # sobe tudo
+uv sync                                                  # dependências locais (cria .venv)
+uv run pytest                                            # testes unitários
+uv run ruff format . && uv run ruff check . && uv run mypy   # format, lint, tipos
+
+cp .env.example .env                                     # uma vez; preencher segredos
+docker compose up -d                                     # sobe tudo (roda as migrações antes)
 docker compose -f docker-compose.yml -f docker-compose.lab.yml up -d   # + alvos de laboratório
-docker compose run --rm worker-web pytest                # testes
+docker compose -f docker-compose.yml -f docker-compose.lab.yml --profile test run --rm tests  # integração
+
+uv run alembic revision -m "descricao"                   # nova migração (em migrations/versions/)
 ```
 
 ## Ambiente local

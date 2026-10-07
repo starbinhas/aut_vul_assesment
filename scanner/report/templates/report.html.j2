@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="{{ r.language }}">
+<head>
+<meta charset="utf-8">
+<title>Relatório de segurança — {{ r.target_id }}</title>
+<style>
+  @page { size: A4; margin: 18mm 15mm; @bottom-right { content: counter(page) "/" counter(pages); font-size: 9pt; color: #64748b; } }
+  body { font-family: "DejaVu Sans", sans-serif; font-size: 10.5pt; color: #0f172a; line-height: 1.45; }
+  h1 { font-size: 20pt; margin: 0 0 4pt; }
+  h2 { font-size: 14pt; border-bottom: 1px solid #cbd5e1; padding-bottom: 3pt; margin-top: 20pt; }
+  h3 { font-size: 12pt; margin: 0 0 6pt; }
+  .muted { color: #64748b; font-size: 9pt; }
+  table.summary { border-collapse: collapse; margin: 8pt 0; }
+  table.summary td, table.summary th { border: 1px solid #cbd5e1; padding: 4pt 10pt; text-align: center; }
+  .item { border: 1px solid #cbd5e1; border-radius: 4pt; padding: 10pt 12pt; margin: 12pt 0; page-break-inside: avoid; }
+  .badge { display: inline-block; padding: 1pt 6pt; border-radius: 3pt; font-size: 8.5pt; font-weight: bold; color: #fff; }
+  .sev-critical { background: #7f1d1d; } .sev-high { background: #b91c1c; } .sev-medium { background: #c2410c; }
+  .sev-low { background: #a16207; } .sev-info { background: #475569; }
+  .st { background: #e2e8f0; color: #0f172a; }
+  pre { background: #f1f5f9; padding: 6pt 8pt; white-space: pre-wrap; word-break: break-all; font-size: 8.5pt; }
+  ol li { margin-bottom: 6pt; }
+  ul.locs { margin: 0 0 6pt; padding-left: 14pt; font-size: 8.5pt; color: #334155; word-break: break-all; }
+</style>
+</head>
+<body>
+<h1>Relatório de segurança</h1>
+<div class="muted">Alvo {{ r.target_id }} · scan {{ r.scan_id }} · gerado em {{ r.generated_at.strftime("%d/%m/%Y %H:%M UTC") }} · OWASP Top 10:{{ r.owasp_version }}</div>
+
+<h2>Resumo</h2>
+<table class="summary">
+  <tr>{% for sev, n in r.summary.by_severity.items() %}<th>{{ sev|severity_pt }}</th>{% endfor %}</tr>
+  <tr>{% for sev, n in r.summary.by_severity.items() %}<td>{{ n }}</td>{% endfor %}</tr>
+</table>
+<p>
+  {{ r.summary.total_reported }} falhas em {{ r.summary.affected_pages }} páginas:
+  {{ r.summary.by_status.get("confirmed", 0) }} confirmadas com prova,
+  {{ r.summary.by_status.get("likely", 0) }} prováveis e
+  {{ r.summary.by_status.get("unconfirmed", 0) }} não confirmadas.
+  Falhas <strong>não confirmadas</strong> foram apontadas pelas ferramentas, mas não conseguimos
+  prová-las automaticamente sem risco para o seu ambiente — avalie-as também.
+</p>
+
+<h2>Falhas encontradas</h2>
+{% for it in r.items %}
+{% set f = it.finding %}
+<div class="item">
+  <h3>{{ loop.index }}. {{ f.title }}</h3>
+  <span class="badge sev-{{ it.severity }}">{{ it.severity|severity_pt }}</span>
+  <span class="badge st">{{ it.status|status_pt }}</span>
+  {% if f.owasp %}<span class="muted">{{ f.owasp }}{% if it.owasp_name %} — {{ it.owasp_name }}{% endif %}</span>{% endif %}
+  {% if f.cwe %}<span class="muted"> · CWE-{{ f.cwe }}</span>{% endif %}
+  {% set n = it.locations|length %}
+  <p class="muted">{% if n == 1 %}Afeta 1 página{% else %}Afeta {{ n }} páginas{% endif %}:</p>
+  <ul class="locs">
+  {% for loc in it.locations[:8] %}
+    <li>{{ loc.method }} {{ loc.url }}{% if loc.parameter %} · parâmetro <code>{{ loc.parameter }}</code>{% endif %}{% if loc.status != it.status %} <span class="muted">({{ loc.status|status_pt|lower }})</span>{% endif %}</li>
+  {% endfor %}
+  {% if n > 8 %}<li class="muted">e mais {{ n - 8 }} páginas (lista completa na área do cliente)</li>{% endif %}
+  </ul>
+
+  <p><strong>O que é.</strong> {{ it.remediation.what_it_is }}</p>
+  <p><strong>Por que importa.</strong> {{ it.remediation.why_it_matters }}</p>
+  <p><strong>Como corrigir.</strong></p>
+  <ol>
+  {% for step in it.remediation.how_to_fix %}
+    <li><strong>{{ step.title }}.</strong> {{ step.detail }}
+      {% if step.snippet %}<pre>{{ step.snippet }}</pre>{% endif %}</li>
+  {% endfor %}
+  </ol>
+  <p><strong>Como verificar.</strong> {{ it.remediation.how_to_verify }}</p>
+
+  {% if f.validation %}
+  <p class="muted"><strong>Validação:</strong> {{ f.validation.reason }}</p>
+  {% if f.validation.proof and f.validation.proof.response and f.validation.proof.response.body_excerpt %}
+  <pre>{{ f.validation.proof.request.method }} {{ f.validation.proof.request.url }}
+HTTP {{ f.validation.proof.response.status }}
+
+{{ f.validation.proof.response.body_excerpt[:400] }}</pre>
+  {% endif %}
+  {% endif %}
+  {% if it.remediation.references %}
+  <p class="muted">Referências: {% for ref in it.remediation.references %}{{ ref }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
+  {% endif %}
+</div>
+{% else %}
+<p>Nenhuma falha encontrada no escopo testado.</p>
+{% endfor %}
+
+{% if r.discarded %}
+<h2>Descartadas por verificação</h2>
+<p class="muted">Apontadas pelas ferramentas e descartadas por checagem determinística.</p>
+<ul>
+{% for d in r.discarded %}<li>{{ d.title }} — {{ d.urls|length }} página(s) <span class="muted">({{ d.reason }})</span></li>{% endfor %}
+</ul>
+{% endif %}
+</body>
+</html>

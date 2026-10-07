@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://scanner.internal/contracts/message.schema.json",
+  "title": "StageMessage",
+  "description": "Envelope de toda mensagem nos Redis Streams (campo 'data' com este JSON). Streams: scan.web.requested -> scan.candidates -> scan.validated -> scan.report.ready.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "message_id", "scan_id", "target_id", "stage", "scope", "payload"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "message_id": {
+      "type": "string",
+      "description": "Chave de idempotência: a mesma mensagem reentregue tem o mesmo message_id."
+    },
+    "scan_id": { "type": "string", "minLength": 1 },
+    "target_id": { "type": "string", "minLength": 1 },
+    "stage": { "enum": ["web.requested", "candidates", "validated", "report.ready"] },
+    "scope": { "$ref": "#/$defs/scope" },
+    "payload": { "type": "object" }
+  },
+  "$defs": {
+    "scope": {
+      "description": "PROVISÓRIO — formato exato pendente de alinhar com a etapa 1.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope_id", "verified", "locked", "base_urls", "allowed_hosts"],
+      "properties": {
+        "scope_id": { "type": "string" },
+        "verified": { "type": "boolean", "description": "Alvo verificado na etapa 1 (ex.: DNS TXT)." },
+        "locked": { "type": "boolean", "description": "Escopo travado; nenhuma etapa pode alterá-lo." },
+        "base_urls": { "type": "array", "items": { "type": "string", "format": "uri" }, "minItems": 1 },
+        "allowed_hosts": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "include_paths": { "type": "array", "items": { "type": "string" }, "description": "Regex de caminhos permitidos. Vazio = tudo dos allowed_hosts.", "default": [] },
+        "exclude_paths": { "type": "array", "items": { "type": "string" }, "description": "Regex de caminhos proibidos (ex.: /logout, /admin/delete).", "default": [] }
+      }
+    }
+  }
+}

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% from "partials/macros.html" import scan_pill %}
+{% block title %}Operação{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Admin / Operação</p>
+    {% if queue_error %}
+      <h1>A fila não respondeu.<br><span class="dim">Os workers podem estar parados.</span></h1>
+    {% elif dead_total %}
+      <h1>{{ dead_total|plural("mensagem rejeitada", "mensagens rejeitadas") }}<br><span class="dim">esperando investigação.</span></h1>
+    {% else %}
+      <h1>{{ running|length|plural("scan em andamento", "scans em andamento") }}<br><span class="dim">e nenhuma mensagem rejeitada.</span></h1>
+    {% endif %}
+  </div>
+  <a class="btn ghost" href="/admin/operacao">Filas e workers</a>
+</div>
+
+<p class="lede">
+  <a href="/admin/clientes">{{ counts.orgs|plural("cliente", "clientes") }}</a> com {{ counts.clients|plural("usuário", "usuários") }}.
+  {{ counts.verified }} de {{ counts.sites|plural("site", "sites") }} com domínio comprovado.
+  {{ counts.scans|plural("scan", "scans") }} no total.
+</p>
+
+<section class="section">
+  <div class="section-head"><h2>Em andamento</h2><a class="small" href="/admin/scans">Todos os scans</a></div>
+  {% if running %}
+  <ul class="list">
+    {% for scan in running %}
+    {% set t = sites.get(scan.target_id) %}
+    <li><div><a href="/scans/{{ scan.scan_id }}">{{ t.domain if t else scan.target_id }}</a> <span class="faint small">iniciado {{ scan.created_at|ago }}{% if scan.status_detail %}, {{ scan.status_detail|phase|lower }}{% endif %}</span></div>{{ scan_pill(scan) }}</li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="empty">Nenhum scan rodando agora.</p>{% endif %}
+</section>
+
+<section class="section">
+  <div class="section-head"><h2>Últimas ações</h2><a class="small" href="/admin/auditoria">Auditoria completa</a></div>
+  <ul class="list">
+    {% for e in recent_audit %}
+    <li><div>{{ e.action|audit }} <span class="faint small">{{ e.object_id or "" }}</span></div><span class="faint small">{{ e.at|ago }}</span></li>
+    {% else %}<li class="faint">Nada registrado.</li>{% endfor %}
+  </ul>
+</section>
+{% endblock %}

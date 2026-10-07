@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "partials/macros.html" import scan_pill %}
+{% block title %}Scans{% endblock %}
+{% block content %}
+<div class="page-head"><div><p class="eyebrow">Admin</p><h1>Scans</h1></div></div>
+<div class="filters">
+  {% for key, label in [("", "Todos"), ("web_scanning", "Testando"), ("validating", "Validando"), ("reporting", "Relatório"), ("done", "Concluídos"), ("failed", "Falhos")] %}
+    <a class="pill {{ 'live' if (status or '') == key }}" href="/admin/scans{{ '?status=' ~ key if key }}">{{ label }}</a>
+  {% endfor %}
+</div>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Quando</th><th>Site</th><th>Cliente</th><th>Situação</th><th>Detalhe</th></tr></thead>
+  <tbody>
+  {% for scan in scans %}
+    {% set t = sites.get(scan.target_id) %}
+    <tr>
+      <td><a href="/scans/{{ scan.scan_id }}">{{ scan.created_at|dt }}</a></td>
+      <td>{{ t.domain if t else scan.target_id }}</td>
+      <td class="muted">{{ orgs.get(t.org_id) if t else "—" }}</td>
+      <td>{{ scan_pill(scan) }}</td>
+      <td class="faint small">{{ scan.status_detail|phase if scan.status_detail else "" }}</td>
+    </tr>
+  {% else %}<tr><td colspan="5" class="faint">Nenhum scan.</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

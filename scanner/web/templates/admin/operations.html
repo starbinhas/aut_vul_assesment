@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Filas{% endblock %}
+{% block content %}
+<div class="page-head"><div><p class="eyebrow"><a href="/admin">Operação</a> / Filas e workers</p><h1>Filas</h1><p class="lede">Uma mensagem rejeitada não volta sozinha: veja o erro, corrija a causa e dispare o scan de novo.</p></div></div>
+{% if error %}<div class="notice error" role="alert">Não foi possível ler o Redis: {{ error }}</div>{% endif %}
+{% for q in queues %}
+<section class="section">
+  <div class="section-head"><h2 class="mono">{{ q.name }}</h2><span class="section-label">{{ q.group or "saída para o time" }}</span></div>
+  <div class="legend"><span><b>{{ q.length }}</b>mensagens no stream</span><span><b>{{ q.pending }}</b>pendentes</span><span><b class="{{ 'sev-high' if q.dead }}">{{ q.dead }}</b>rejeitadas</span></div>
+  {% if q.consumers %}
+  <ul class="pages mt-4">{% for c in q.consumers %}<li><span>{{ c.name }}</span><span>{{ c.pending }} pendente(s), parado há {{ c.idle_s }} s</span></li>{% endfor %}</ul>
+  {% endif %}
+  {% if q.dead_entries %}
+  <details class="mt-4"><summary class="small muted">Últimas rejeitadas</summary>
+    <ul class="pages mt-2">{% for d in q.dead_entries %}<li><span>{{ d.id }}</span><span>{{ d.error }}</span></li>{% endfor %}</ul>
+  </details>
+  {% endif %}
+</section>
+{% endfor %}
+{% endblock %}
