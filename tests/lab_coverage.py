@@ -25,6 +25,7 @@ from scanner.common.config import get_settings
 from scanner.common.db import FindingRow, make_session_factory
 from scanner.common.models import Finding, Status
 from scanner.common.owasp import CATEGORIES, owasp_for_cwe
+from scanner.validation.coverage_map import plan_for
 
 # Categorias do Juice Shop (campo `category` de /api/Challenges) → OWASP Top 10:2025.
 # A app usa rótulos próprios; mapeamos para falar a mesma língua do nosso relatório.
@@ -119,7 +120,7 @@ def measure(scan_id: str) -> list[CategoryCoverage]:
 def _print(rows: list[CategoryCoverage], scan_id: str) -> None:
     has_target = any(r.target_weaknesses for r in rows)
     print(f"\nCobertura do scan {scan_id} (OWASP Top 10:2025)\n")
-    header = f"{'Categoria':<42}{'Alvo':>6}{'Achados':>9}{'Conf.':>7}"
+    header = f"{'Categoria':<42}{'Alvo':>6}{'Achados':>9}{'Conf.':>7}  {'Estado':<10}"
     print(header)
     print("-" * len(header))
     touched_target = 0
@@ -130,7 +131,11 @@ def _print(rows: list[CategoryCoverage], scan_id: str) -> None:
             if r.our_findings:
                 touched_target += 1
         alvo = str(r.target_weaknesses) if r.target_weaknesses else "·"
-        print(f"{r.owasp} {r.name:<36}{alvo:>6}{r.our_findings:>9}{r.our_confirmed:>7}")
+        plan = plan_for(r.owasp)
+        estado = plan.status if plan else ""
+        print(
+            f"{r.owasp} {r.name:<36}{alvo:>6}{r.our_findings:>9}{r.our_confirmed:>7}  {estado:<10}"
+        )
     print("-" * len(header))
     if has_target:
         print(
@@ -141,6 +146,13 @@ def _print(rows: list[CategoryCoverage], scan_id: str) -> None:
         "Achados: abertos (confirmados + prováveis + não confirmados). "
         "Conf.: confirmados/prováveis por prova determinística."
     )
+    from scanner.validation.coverage_map import missing
+
+    pend = missing()
+    if pend:
+        print("\nAinda nosso e não pronto:")
+        for pl in pend:
+            print(f"  {pl.owasp} [{pl.status}] {pl.detector} — {pl.note}")
 
 
 def coverage(scan_id: str) -> None:
