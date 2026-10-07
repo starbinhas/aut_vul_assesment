@@ -79,8 +79,9 @@ PLAN: dict[str, CategoryPlan] = {
     "A09:2025": CategoryPlan(
         "A09:2025",
         "manual",
-        "revisão de registro e alerta",
-        "falhas de log não são observáveis de fora do alvo.",
+        "checklist de revisão + teste de correlação de logs",
+        "checklist humano pronto; correlação (marcar ataques e conferir nos logs) automatiza com "
+        "acesso aos registros do cliente. De fora, invisível.",
     ),
     "A10:2025": CategoryPlan(
         "A10:2025",
