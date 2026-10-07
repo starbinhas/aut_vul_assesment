@@ -42,8 +42,9 @@ PLAN: dict[str, CategoryPlan] = {
     "A03:2025": CategoryPlan(
         "A03:2025",
         "externo",
-        "análise de dependências / etapa 3 (nuclei)",
-        "Retire.js não enxerga bibliotecas empacotadas (bundle); cobertura real é por SCA/CVEs.",
+        "scan de componentes (SCA: python -m scanner.sca)",
+        "SCA pronto: confere o manifesto que o cliente fornece contra o OSV. Sobrepõe a etapa 3 "
+        "(nuclei) do time — alinhar a fronteira antes de produção.",
     ),
     "A04:2025": CategoryPlan(
         "A04:2025",
