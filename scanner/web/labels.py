@@ -62,6 +62,8 @@ AUDIT = {
     "scan.start": "Iniciou scan",
     "scan.stop_partial": "Parou a espera e pediu o relatório parcial",
     "scan.manual_review": "Marcou um item de revisão manual",
+    "login.set": "Configurou o login de teste do site",
+    "login.clear": "Removeu o login de teste do site",
     "finding.review": "Revisou achado",
     "report.regenerate": "Pediu novo relatório",
     "org.create": "Criou cliente",

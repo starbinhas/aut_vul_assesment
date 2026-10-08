@@ -112,6 +112,7 @@ def start_scan(
     publish: Publisher,
     lab_hosts: list[str],
     profile: str = "safe",
+    credential: dict[str, object] | None = None,
 ) -> Scan:
     """Regra 1: só site verificado; e um scan por vez por site.
 
@@ -159,7 +160,8 @@ def start_scan(
         target_id=target.target_id,
         stage="recon.requested",
         scope=scope,
-        payload={"profile": requested.name},
+        # A credencial (com a senha desta execução) vai só na mensagem, nunca no banco nem no log.
+        payload={"profile": requested.name} | ({"credential": credential} if credential else {}),
     )
     # Publicar só depois do commit: o worker confere o scan no banco (`check_authorized`) assim que
     # lê a mensagem; antes do commit ele não acharia a linha e recusaria o scan como não autorizado.

@@ -20,6 +20,7 @@ from scanner.common.db import (
     ScanStatus,
     StageProgress,
     Target,
+    TargetAuthConfig,
 )
 from scanner.common.models import Severity, Status
 from scanner.common.owasp import CATEGORIES
@@ -284,6 +285,7 @@ def site_detail(
         profiles=profiles_for(viewer, target, request.app.state.settings.lab_hosts),
         profile_info=labels.PROFILE_INFO,
         limits=_scan_limits(request.app.state.settings, target),
+        auth_config=db.get(TargetAuthConfig, target_id),
         # Só códigos conhecidos: texto livre na URL viraria injeção de conteúdo.
         error=SCAN_ERRORS.get(request.query_params.get("erro", "")),
     )
@@ -315,18 +317,68 @@ def site_verify(
     return RedirectResponse(f"/sites/{target.target_id}", 303)
 
 
+@router.post("/sites/{target_id}/login-teste")
+def site_auth_config(
+    target_id: str,
+    login_url: str = Form(""),
+    email: str = Form(""),
+    token_path: str = Form("token"),
+    protected_path: str = Form(""),
+    viewer: Viewer = Depends(current_viewer),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Salva (ou remove) a config de scan autenticado do site — sem a senha (essa é por scan)."""
+    target = get_target(db, viewer, target_id)
+    login_url, email = login_url.strip(), email.strip()
+    row = db.get(TargetAuthConfig, target_id)
+    if not login_url or not email:  # ambos vazios = remover a config
+        if row is not None:
+            db.delete(row)
+        action = "login.clear"
+    else:
+        if row is None:
+            row = TargetAuthConfig(target_id=target_id, login_url=login_url, email=email)
+            db.add(row)
+        row.login_url = login_url
+        row.email = email
+        row.token_path = token_path.strip() or "token"
+        row.protected_path = protected_path.strip() or None
+        action = "login.set"
+    audit(db, viewer, action, org_id=target.org_id, object_type="site", object_id=target_id)
+    return RedirectResponse(f"/sites/{target_id}#login-teste", 303)
+
+
+def _credential_for(db: Session, target_id: str, password: str) -> dict[str, object] | None:
+    """Monta a credencial da execução a partir da config salva + a senha digitada agora."""
+    cfg = db.get(TargetAuthConfig, target_id)
+    if cfg is None or not password:
+        return None
+    return {
+        "type": "login",
+        "login_url": cfg.login_url,
+        "email": cfg.email,
+        "password": password,
+        "token_path": tuple(cfg.token_path.split(".")),
+        "protected_path": cfg.protected_path or "",
+    }
+
+
 @router.post("/sites/{target_id}/scans")
 def site_scan(
     request: Request,
     target_id: str,
     profile: str = Form("safe"),
+    password: str = Form(""),
     viewer: Viewer = Depends(current_viewer),
     db: Session = Depends(get_db),
 ) -> Response:
     target = get_target(db, viewer, target_id)
     lab_hosts = request.app.state.settings.lab_hosts
+    credential = _credential_for(db, target_id, password)
     try:
-        scan = start_scan(db, viewer, target, request.app.state.publish, lab_hosts, profile)
+        scan = start_scan(
+            db, viewer, target, request.app.state.publish, lab_hosts, profile, credential
+        )
     except ScanNotAllowedError as exc:
         return RedirectResponse(f"/sites/{target.target_id}?erro={exc.code}", 303)
     return RedirectResponse(f"/scans/{scan.scan_id}", 303)

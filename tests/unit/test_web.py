@@ -720,3 +720,68 @@ def test_client_cannot_review_other_org_scan(env) -> None:
         data={"state": "ok", "csrf_token": csrf_of(c, "/painel")},
     )
     assert r.status_code == 404
+
+
+# --- config de login de teste (scan autenticado) -----------------------------------------
+
+
+def test_auth_config_set_and_clear(env) -> None:
+    app, sessions, _ = env
+    from scanner.common.db import TargetAuthConfig
+
+    c = login(app, "ana@loja-a.test")
+    tok = csrf_of(c, "/painel")
+    r = c.post(
+        "/sites/t-a/login-teste",
+        data={
+            "login_url": "https://a.com/login",
+            "email": "t@a.com",
+            "token_path": "auth.token",
+            "protected_path": "/me",
+            "csrf_token": tok,
+        },
+    )
+    assert r.status_code == 303
+    with sessions() as s:
+        cfg = s.get(TargetAuthConfig, "t-a")
+        assert cfg is not None and cfg.login_url == "https://a.com/login"
+        assert cfg.token_path == "auth.token" and cfg.protected_path == "/me"
+    # endereço e e-mail vazios = remover
+    r = c.post("/sites/t-a/login-teste", data={"login_url": "", "email": "", "csrf_token": tok})
+    assert r.status_code == 303
+    with sessions() as s:
+        assert s.get(TargetAuthConfig, "t-a") is None
+
+
+def test_auth_config_blocked_for_other_org(env) -> None:
+    app, _sessions, _ = env
+    c = login(app, "ana@loja-a.test")
+    r = c.post(
+        "/sites/t-b/login-teste",
+        data={"login_url": "https://b/login", "email": "x@b", "csrf_token": csrf_of(c, "/painel")},
+    )
+    assert r.status_code == 404
+
+
+def test_credential_for_builds_from_config_and_password(env) -> None:
+    _app, sessions, _ = env
+    from scanner.common.db import TargetAuthConfig
+    from scanner.web.routes.client import _credential_for
+
+    with sessions.begin() as s:
+        s.add(
+            TargetAuthConfig(
+                target_id="t-a",
+                login_url="https://a/login",
+                email="t@a",
+                token_path="authentication.token",
+                protected_path="/me",
+            )
+        )
+    with sessions() as s:
+        cred = _credential_for(s, "t-a", "secret123")
+        assert cred is not None
+        assert cred["type"] == "login" and cred["password"] == "secret123"
+        assert cred["token_path"] == ("authentication", "token")
+        assert _credential_for(s, "t-a", "") is None  # sem senha -> sem scan autenticado
+        assert _credential_for(s, "t-x", "secret") is None  # sem config

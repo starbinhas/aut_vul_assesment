@@ -116,6 +116,27 @@ class RemediationCache(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class TargetAuthConfig(Base):
+    """Config de scan autenticado por site — só a parte NÃO sensível.
+
+    A senha nunca fica aqui (regra do CLAUDE.md: credencial de teste não é persistida). É digitada
+    ao iniciar o scan e usada só naquela execução. Aqui guardamos o "formato" do login: para onde
+    enviar, qual usuário, onde achar o token na resposta e um recurso protegido (checagem A08).
+    """
+
+    __tablename__ = "target_auth_config"
+
+    target_id: Mapped[str] = mapped_column(ForeignKey("targets.target_id"), primary_key=True)
+    login_url: Mapped[str] = mapped_column(String(2048))
+    email: Mapped[str] = mapped_column(String(320))
+    # Caminho pontuado onde o token está na resposta de login, ex.: "authentication.token".
+    token_path: Mapped[str] = mapped_column(String(200), default="token")
+    protected_path: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class ManualCheckResult(Base):
     """Estado de um item de revisão manual (A06/A09) por scan — marcado por uma pessoa.
 

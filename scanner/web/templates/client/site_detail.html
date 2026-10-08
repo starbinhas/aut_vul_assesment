@@ -103,9 +103,48 @@
       </label>
       {% endfor %}
     </fieldset>
+    {% if auth_config %}
+    <label class="auth-pass">
+      <span class="auth-pass-label">Senha do usuário de teste <span class="faint">({{ auth_config.email }})</span></span>
+      <input type="password" name="password" autocomplete="off" placeholder="para testar a área logada (opcional)">
+      <span class="faint small">Usada só neste scan, nunca guardada. Em branco = scan sem login.</span>
+    </label>
+    {% endif %}
     <div class="profile-submit">
       <button class="btn primary" type="submit">{% for p in profiles %}<span class="when when-{{ p.name }}">{{ profile_info.get(p.name, {}).button or "Iniciar scan" }}</span>{% endfor %}</button>
       <span class="faint small">Leva até {{ limits.minutes }} minutos. Pode fechar a página: o resultado aparece aqui.</span>
+    </div>
+  </form>
+</section>
+{% endif %}
+
+{% if t.verified_at %}
+<section class="section" id="login-teste">
+  <div class="section-head">
+    <h2>Login de teste</h2>
+    <span class="section-label">Para testar a área logada (falhas de autenticação e de controle de acesso). Guardamos só o endereço e o usuário — a senha você digita a cada scan.</span>
+  </div>
+  <form method="post" action="/sites/{{ t.target_id }}/login-teste" class="form-stack">
+    <input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}">
+    <label class="field">
+      <span>Endereço de login <span class="faint">(onde o site recebe usuário e senha)</span></span>
+      <input type="url" name="login_url" value="{{ auth_config.login_url if auth_config else '' }}" placeholder="https://seusite.com/api/login">
+    </label>
+    <label class="field">
+      <span>E-mail do usuário de teste</span>
+      <input type="email" name="email" value="{{ auth_config.email if auth_config else '' }}" placeholder="scanner-teste@seusite.com">
+    </label>
+    <label class="field">
+      <span>Onde está o token na resposta <span class="faint">(caminho no JSON)</span></span>
+      <input type="text" name="token_path" value="{{ auth_config.token_path if auth_config else 'token' }}" placeholder="ex.: authentication.token">
+    </label>
+    <label class="field">
+      <span>Recurso que exige login <span class="faint">(opcional, para o teste de token)</span></span>
+      <input type="text" name="protected_path" value="{{ auth_config.protected_path if auth_config else '' }}" placeholder="ex.: /api/perfil">
+    </label>
+    <div class="row">
+      <button class="btn primary" type="submit">Salvar login de teste</button>
+      {% if auth_config %}<span class="faint small">Para remover, limpe o endereço e o e-mail e salve.</span>{% endif %}
     </div>
   </form>
 </section>

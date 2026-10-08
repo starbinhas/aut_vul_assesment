@@ -633,3 +633,9 @@ body { isolation: isolate; }
 }
 .manual-note::placeholder { color: var(--ink-faint); }
 @media (prefers-reduced-motion: reduce) { .seg-btn { transition: none; } }
+
+/* Login de teste (config de scan autenticado) */
+.form-stack { max-width: 520px; }
+.auth-pass { display: block; max-width: 420px; margin: 0 0 var(--s-4); }
+.auth-pass .auth-pass-label { display: block; font-size: 13px; color: var(--ink-soft); margin-bottom: 6px; }
+.auth-pass input { max-width: 420px; }
