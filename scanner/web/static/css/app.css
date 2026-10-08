@@ -596,3 +596,40 @@ body { isolation: isolate; }
   .profile:not(:has(input:checked)) :is(.profile-block, .profile-facts) { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .profile, .profile::before, .profile::after, .profile .radio::after { transition: none; } }
+
+/* Revisão manual (A06/A09): checklist guiado, estado no controle segmentado (cor com função) */
+.manual-group { font-size: 13px; color: var(--ink-faint); margin: var(--s-5) 0 var(--s-2); }
+.manual-group:first-of-type { margin-top: var(--s-2); }
+.manual-list { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--s-2); }
+.manual-item {
+  display: flex; gap: var(--s-4); align-items: flex-start; justify-content: space-between;
+  flex-wrap: wrap;
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  padding: var(--s-3) var(--s-4);
+}
+.manual-main { min-width: 0; flex: 1 1 320px; }
+.manual-title { font-weight: 500; margin: 0; }
+.manual-why { color: var(--ink-soft); font-size: 14px; margin: var(--s-1) 0 0; }
+.manual-how { margin-top: var(--s-2); }
+.manual-how summary { color: var(--ink-faint); font-size: 13px; cursor: pointer; }
+.manual-how p { color: var(--ink-soft); font-size: 14px; margin: var(--s-2) 0 0; max-width: 60ch; }
+.manual-form { display: flex; flex-direction: column; gap: var(--s-2); flex: 0 0 auto; }
+.seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: var(--r-pill); overflow: hidden; }
+.seg-btn {
+  appearance: none; background: transparent; color: var(--ink-soft);
+  border: 0; border-left: 1px solid var(--line);
+  padding: 6px 13px; font: 500 13px var(--font-text); cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+.seg-btn:first-child { border-left: 0; }
+.seg-btn:hover { color: var(--ink); }
+.seg-btn.on { color: var(--accent-ink); }
+.seg-btn[value="ok"].on { background: var(--ok); }
+.seg-btn[value="fail"].on { background: var(--sev-high); }
+.seg-btn[value="na"].on { background: var(--ink-faint); color: var(--ink); }
+.manual-note {
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-sm);
+  color: var(--ink); padding: 6px 10px; font: 13px var(--font-text); min-width: 200px;
+}
+.manual-note::placeholder { color: var(--ink-faint); }
+@media (prefers-reduced-motion: reduce) { .seg-btn { transition: none; } }

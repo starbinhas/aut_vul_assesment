@@ -1,0 +1,30 @@
+{# Revisão manual guiada (A06/A09): o que verificar, por que, como — marcada por uma pessoa. #}
+<section class="section" id="revisao">
+  <div class="section-head">
+    <h2>Revisão manual</h2>
+    <span class="section-label">Estas falhas um robô não acha — alguém precisa verificar. Marque cada item conforme conferir.</span>
+  </div>
+  {% for g in manual %}
+  <p class="manual-group">{{ g.owasp }} — {{ g.label }}</p>
+  <ul class="manual-list">
+    {% for item in g["items"] %}
+    <li class="manual-item">
+      <div class="manual-main">
+        <p class="manual-title">{{ item.c.title }}</p>
+        <p class="manual-why">{{ item.c.why }}</p>
+        <details class="manual-how"><summary>Como verificar</summary><p>{{ item.c.how }}</p></details>
+      </div>
+      <form method="post" action="/scans/{{ scan.scan_id }}/revisao/{{ item.c.check_id }}" class="manual-form">
+        <input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}">
+        <div class="seg" role="group" aria-label="Situação">
+          <button name="state" value="ok" type="submit" class="seg-btn{{ ' on' if item.state == 'ok' }}" aria-pressed="{{ 'true' if item.state == 'ok' else 'false' }}">OK</button>
+          <button name="state" value="fail" type="submit" class="seg-btn{{ ' on' if item.state == 'fail' }}" aria-pressed="{{ 'true' if item.state == 'fail' else 'false' }}">Falha</button>
+          <button name="state" value="na" type="submit" class="seg-btn{{ ' on' if item.state == 'na' }}" aria-pressed="{{ 'true' if item.state == 'na' else 'false' }}">N/A</button>
+        </div>
+        <input type="text" name="note" value="{{ item.note or '' }}" maxlength="500" placeholder="observação (opcional)" class="manual-note" aria-label="Observação">
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endfor %}
+</section>

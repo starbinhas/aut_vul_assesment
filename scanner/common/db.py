@@ -116,6 +116,25 @@ class RemediationCache(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class ManualCheckResult(Base):
+    """Estado de um item de revisão manual (A06/A09) por scan — marcado por uma pessoa.
+
+    O catálogo dos itens é estático (scanner/report/manual_checks.py); aqui fica só o que o
+    revisor decidiu: pending (padrão) | ok | fail | na, com nota opcional.
+    """
+
+    __tablename__ = "manual_check_results"
+
+    scan_id: Mapped[str] = mapped_column(ForeignKey("scans.scan_id"), primary_key=True)
+    check_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    state: Mapped[str] = mapped_column(String(16), default="pending")
+    note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    reviewed_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class CrawlMemory(Base):
     """Memória de rastreio por alvo: as URLs já descobertas em scans anteriores.
 

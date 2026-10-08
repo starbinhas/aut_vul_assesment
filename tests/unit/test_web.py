@@ -669,3 +669,54 @@ def test_partial_reason_label_explains_aggressive() -> None:
     assert "agressivo" in agg.lower() and "Completo seguro" in agg
     assert labels.partial_reason("target-unstable") != agg
     assert labels.partial_reason("")  # fallback não vazio
+
+
+# --- revisão manual A06/A09 --------------------------------------------------------------
+
+
+def test_client_can_mark_manual_review(env) -> None:
+    app, sessions, _ = env
+    from scanner.common.db import ManualCheckResult
+
+    c = login(app, "ana@loja-a.test")
+    r = c.post(
+        "/scans/scan-a/revisao/A06-valores",
+        data={
+            "state": "fail",
+            "note": "aceita quantidade negativa",
+            "csrf_token": csrf_of(c, "/painel"),
+        },
+    )
+    assert r.status_code == 303
+    with sessions() as s:
+        row = s.get(ManualCheckResult, ("scan-a", "A06-valores"))
+        assert row is not None and row.state == "fail"
+        assert row.note == "aceita quantidade negativa"
+
+
+def test_manual_review_rejects_unknown_check_or_state(env) -> None:
+    app, _, _ = env
+    c = login(app, "ana@loja-a.test")
+    tok = csrf_of(c, "/painel")
+    assert (
+        c.post(
+            "/scans/scan-a/revisao/nao-existe", data={"state": "ok", "csrf_token": tok}
+        ).status_code
+        == 404
+    )
+    assert (
+        c.post(
+            "/scans/scan-a/revisao/A06-valores", data={"state": "zzz", "csrf_token": tok}
+        ).status_code
+        == 404
+    )
+
+
+def test_client_cannot_review_other_org_scan(env) -> None:
+    app, sessions, _ = env
+    c = login(app, "ana@loja-a.test")
+    r = c.post(
+        "/scans/scan-b/revisao/A09-login",
+        data={"state": "ok", "csrf_token": csrf_of(c, "/painel")},
+    )
+    assert r.status_code == 404

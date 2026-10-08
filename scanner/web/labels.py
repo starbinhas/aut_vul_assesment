@@ -61,6 +61,7 @@ AUDIT = {
     "site.recurrence": "Mudou a recorrência",
     "scan.start": "Iniciou scan",
     "scan.stop_partial": "Parou a espera e pediu o relatório parcial",
+    "scan.manual_review": "Marcou um item de revisão manual",
     "finding.review": "Revisou achado",
     "report.regenerate": "Pediu novo relatório",
     "org.create": "Criou cliente",

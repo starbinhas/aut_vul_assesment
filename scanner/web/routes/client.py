@@ -12,9 +12,19 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from scanner.common.config import Settings
-from scanner.common.db import Organization, Report, Scan, ScanStatus, StageProgress, Target
+from scanner.common.db import (
+    ManualCheckResult,
+    Organization,
+    Report,
+    Scan,
+    ScanStatus,
+    StageProgress,
+    Target,
+)
 from scanner.common.models import Severity, Status
+from scanner.common.owasp import CATEGORIES
 from scanner.common.scope import scope_for
+from scanner.report import manual_checks
 from scanner.report.models import Report as ReportModel
 from scanner.report.models import ReportItem
 from scanner.report.names import display_title
@@ -365,6 +375,29 @@ def _filter(items: list[ReportItem], sev: list[str], st: list[str], q: str) -> l
     ]
 
 
+def _manual_groups(db: Session, scan_id: str) -> list[dict[str, object]]:
+    """Itens de revisão manual (A06/A09) com o estado já marcado, agrupados por categoria."""
+    results = {
+        r.check_id: r
+        for r in db.scalars(select(ManualCheckResult).where(ManualCheckResult.scan_id == scan_id))
+    }
+    return [
+        {
+            "owasp": owasp,
+            "label": CATEGORIES.get(owasp, owasp),
+            "items": [
+                {
+                    "c": c,
+                    "state": results[c.check_id].state if c.check_id in results else "pending",
+                    "note": results[c.check_id].note if c.check_id in results else None,
+                }
+                for c in items
+            ],
+        }
+        for owasp, items in manual_checks.BY_OWASP.items()
+    ]
+
+
 @router.get("/scans/{scan_id}")
 def scan_detail(
     request: Request,
@@ -427,6 +460,7 @@ def scan_detail(
         item_id=item_id,
         pending_reviews=reviews_since_report(db, scan_id, report_row) if viewer.is_admin else 0,
         tools_done=tools_done,
+        manual=_manual_groups(db, scan_id),
     )
 
 
@@ -465,6 +499,42 @@ def scan_stop_partial(
             object_id=scan.scan_id,
         )
     return RedirectResponse(f"/scans/{scan.scan_id}", 303)
+
+
+@router.post("/scans/{scan_id}/revisao/{check_id}")
+def manual_review(
+    scan_id: str,
+    check_id: str,
+    state: str = Form(...),
+    note: str = Form(""),
+    viewer: Viewer = Depends(current_viewer),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Marca um item de revisão manual (A06/A09) para este scan — por uma pessoa."""
+    from scanner.common.db import ManualCheckResult
+    from scanner.report import manual_checks
+
+    _scan, target = get_scan(db, viewer, scan_id)  # get_scan faz a checagem de tenancy (404)
+    if check_id not in manual_checks.CHECK_IDS or state not in manual_checks.STATES:
+        raise not_found()
+    row = db.get(ManualCheckResult, (scan_id, check_id))
+    if row is None:
+        row = ManualCheckResult(scan_id=scan_id, check_id=check_id)
+        db.add(row)
+    row.state = state
+    row.note = note.strip()[:500] or None
+    row.reviewed_by = viewer.user_id
+    audit(
+        db,
+        viewer,
+        "scan.manual_review",
+        org_id=target.org_id if target else None,
+        object_type="scan",
+        object_id=scan_id,
+        check_id=check_id,
+        state=state,
+    )
+    return RedirectResponse(f"/scans/{scan_id}#revisao", 303)
 
 
 def _report_or_404(db: Session, viewer: Viewer, scan_id: str) -> Report:
