@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 import redis
@@ -74,6 +75,7 @@ def run_scan(
     scope_routes: list[str],
     credential: HeaderCredential | LoginCredential | None,
     profile: ScanProfile,
+    on_crawl_done: Callable[[int], None] | None = None,
 ) -> list[Finding]:
     guard = ScopeGuard(msg.scope)
     zap.start_session(msg.scan_id)
@@ -94,6 +96,10 @@ def run_scan(
             zap.spider(base, context_name)
             zap.ajax_spider(base, context_name)
         zap.passive_scan()
+        # Cobertura medida AQUI (fim do rastreio, antes do ativo): o scan ativo gera muitas URLs
+        # de teste e inflaria a conta. Isto mede o que o rastreio realmente alcançou.
+        if on_crawl_done is not None:
+            on_crawl_done(sum(zap.crawled_count(base) for base in msg.scope.base_urls))
         for base in msg.scope.base_urls:
             zap.active_scan(base, context_id)
     except ScanTimeoutError as exc:
@@ -177,19 +183,25 @@ def handle(
         limits,
         on_progress=progress,
     )
+    def on_crawl_done(pages: int) -> None:
+        # Portão de cobertura: grava o que o rastreio alcançou e avisa se saiu raso.
+        set_pages_crawled(sessions, msg.scan_id, pages)
+        if pages < settings.coverage_min_pages:
+            log.warning("cobertura possivelmente parcial", extra={"pages_crawled": pages})
+
     progress("starting")
     try:
         findings = run_scan(
-            zap, msg, msg.payload.get("routes", []), _credential(msg.payload), profile
+            zap,
+            msg,
+            msg.payload.get("routes", []),
+            _credential(msg.payload),
+            profile,
+            on_crawl_done=on_crawl_done,
         )
     except Exception:
         set_scan_status(sessions, msg.scan_id, ScanStatus.WEB_SCANNING, "retrying")
         raise
-    # Portão de cobertura: registra quantas páginas o rastreio alcançou e avisa se saiu raso.
-    pages = sum(zap.crawled_count(base) for base in msg.scope.base_urls)
-    set_pages_crawled(sessions, msg.scan_id, pages)
-    if pages < settings.coverage_min_pages:
-        log.warning("cobertura possivelmente parcial", extra={"pages_crawled": pages})
     set_scan_status(sessions, msg.scan_id, ScanStatus.VALIDATING, "validate")
     out = make_message(
         msg,
