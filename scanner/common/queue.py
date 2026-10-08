@@ -30,6 +30,8 @@ STREAM_REPORT_READY = "scan.report.ready"
 DEAD_LETTER_SUFFIX = ".dead"
 
 Handler = Callable[[Session, StageMessage], None]
+# Chamado quando a fila desiste de uma mensagem (dead-letter): marca o scan como falho.
+GiveUp = Callable[[StageMessage], None]
 
 BLOCK_MS = 5000
 RECONNECT_SECONDS = 2
@@ -48,6 +50,16 @@ def connect(url: str) -> redis.Redis:
 
 def publish(r: redis.Redis, stream: str, msg: StageMessage) -> None:
     r.xadd(stream, {"data": msg.model_dump_json()})
+
+
+def _give_up(on_give_up: GiveUp | None, raw: Any, reason: str) -> None:
+    """Avisa (best-effort) que a fila desistiu da mensagem, para marcar o scan como falho."""
+    if on_give_up is None:
+        return
+    try:
+        on_give_up(StageMessage.model_validate_json(raw))
+    except Exception:
+        log.warning("não foi possível marcar o scan como falho", extra={"reason": reason})
 
 
 def _claim(session: Session, stream: str, message_id: str) -> bool:
@@ -70,6 +82,7 @@ def consume(
     handler: Handler,
     block_ms: int = BLOCK_MS,
     retry_after_ms: int = 60_000,
+    on_give_up: GiveUp | None = None,
 ) -> None:
     """Loop de consumo. O handler roda na mesma transação que registra a idempotência.
 
@@ -86,7 +99,9 @@ def consume(
     log.info("aguardando mensagens", extra={"stream": stream, "group": group})
     while True:
         try:
-            _retry_pending(r, sessions, stream, group, consumer, handler, retry_after_ms)
+            _retry_pending(
+                r, sessions, stream, group, consumer, handler, retry_after_ms, on_give_up
+            )
             resp: Any = r.xreadgroup(group, consumer, {stream: ">"}, count=1, block=block_ms)
         except (redis.TimeoutError, redis.ConnectionError) as exc:
             log.warning("Redis indisponível, tentando de novo", extra={"error": str(exc)})
@@ -94,7 +109,9 @@ def consume(
             continue
         for _stream, entries in resp or []:
             for entry_id, fields in entries:
-                _handle_entry(r, sessions, stream, group, entry_id, fields, handler)
+                _handle_entry(
+                    r, sessions, stream, group, entry_id, fields, handler, on_give_up
+                )
 
 
 def _retry_pending(
@@ -105,6 +122,7 @@ def _retry_pending(
     consumer: str,
     handler: Handler,
     retry_after_ms: int,
+    on_give_up: GiveUp | None = None,
 ) -> None:
     pending: Any = r.xpending_range(stream, group, min="-", max="+", count=10, idle=retry_after_ms)
     for p in pending:
@@ -115,13 +133,14 @@ def _retry_pending(
             log.error(
                 "mensagem falhou várias vezes; dead-letter", extra={"entry_id": str(entry_id)}
             )
+            _give_up(on_give_up, raw, "max_deliveries")
             _dead_letter(r, stream, raw, f"falhou {p['times_delivered']} vezes")
             r.xack(stream, group, entry_id)
             continue
         claimed: Any = r.xclaim(stream, group, consumer, retry_after_ms, [entry_id])
         for claimed_id, fields in claimed:
             log.warning("reprocessando mensagem", extra={"attempt": p["times_delivered"] + 1})
-            _handle_entry(r, sessions, stream, group, claimed_id, fields, handler)
+            _handle_entry(r, sessions, stream, group, claimed_id, fields, handler, on_give_up)
 
 
 def _handle_entry(
@@ -132,6 +151,7 @@ def _handle_entry(
     entry_id: Any,
     fields: dict[Any, Any],
     handler: Handler,
+    on_give_up: GiveUp | None = None,
 ) -> None:
     raw = fields.get(b"data") or fields.get("data") or b""
     try:
@@ -154,6 +174,7 @@ def _handle_entry(
         # Sem ack: fica pendente para nova tentativa. Erros de autorização vão para dead-letter.
         if isinstance(exc, UnauthorizedScanError):
             log.error("scan recusado: não autorizado", extra={"error": str(exc)})
+            _give_up(on_give_up, raw, "unauthorized")
             _dead_letter(r, stream, raw, str(exc))
             r.xack(stream, group, entry_id)
         else:

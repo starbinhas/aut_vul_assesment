@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 
@@ -26,7 +27,7 @@ def run_nuclei(target_url: str, timeout_s: int = 600) -> str:
             "nuclei não encontrado no PATH; instale o binário do ProjectDiscovery para a etapa 3."
         )
     result = subprocess.run(  # noqa: S603 — argv fixo, sem shell
-        build_nuclei_command(target_url),
+        build_nuclei_command(target_url, os.environ.get("NUCLEI_TEMPLATES_DIR")),
         capture_output=True,
         text=True,
         timeout=timeout_s,

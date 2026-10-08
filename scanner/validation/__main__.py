@@ -1,7 +1,7 @@
 """Worker da etapa 5: consome `scan.candidates` e publica em `scan.validated`."""
 
 from scanner.common.config import get_settings
-from scanner.common.db import make_session_factory
+from scanner.common.db import ScanStatus, make_session_factory, set_scan_status
 from scanner.common.logging import setup_logging
 from scanner.common.queue import STREAM_CANDIDATES, connect, consume
 from scanner.validation.service import handle
@@ -19,6 +19,9 @@ def main() -> None:
         group="validation",
         consumer=settings.consumer_name,
         handler=lambda session, msg: handle(session, msg, settings, r, sessions),
+        on_give_up=lambda m: set_scan_status(
+            sessions, m.scan_id, ScanStatus.FAILED, "falhou após várias tentativas"
+        ),
     )
 
 

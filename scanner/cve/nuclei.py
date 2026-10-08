@@ -147,13 +147,12 @@ def parse_nuclei_jsonl(text: str, scan_id: str, target_id: str) -> list[Finding]
     return findings
 
 
-def build_nuclei_command(target_url: str) -> list[str]:
-    """Argv do nuclei headless com saída JSONL contra um único alvo. Função pura."""
-    return [
-        "nuclei",
-        "-u",
-        target_url,
-        "-jsonl",
-        "-silent",
-        "-disable-update-check",
-    ]
+def build_nuclei_command(target_url: str, templates_dir: str | None = None) -> list[str]:
+    """Argv do nuclei headless com saída JSONL contra um único alvo. Função pura.
+
+    `templates_dir`: usa os templates pré-baixados (sem buscar na rede em tempo de execução).
+    """
+    cmd = ["nuclei", "-u", target_url, "-jsonl", "-silent", "-disable-update-check"]
+    if templates_dir:
+        cmd += ["-t", templates_dir]
+    return cmd

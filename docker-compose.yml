@@ -118,6 +118,7 @@ services:
     command: ["python", "-m", "scanner.recon"]
     environment:
       CONSUMER_NAME: worker-recon-1
+      HOME: /tmp  # disco só-leitura: naabu grava config/cache no tmpfs
     networks: [internal, egress]
 
   worker-cve:
@@ -125,6 +126,7 @@ services:
     command: ["python", "-m", "scanner.cve"]
     environment:
       CONSUMER_NAME: worker-cve-1
+      HOME: /tmp  # disco só-leitura: nuclei grava config/cache no tmpfs
     networks: [internal, egress]
 
   worker-validate:

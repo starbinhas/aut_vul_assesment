@@ -21,11 +21,13 @@ RUN set -eux; \
     unzip -o nuclei.zip nuclei -d /usr/local/bin; \
     chmod +x /usr/local/bin/naabu /usr/local/bin/nuclei; \
     rm -f naabu.zip nuclei.zip
-# Templates do nuclei pré-baixados (dir compartilhado e legível); sem download em tempo de execução.
-ENV NUCLEI_TEMPLATES_DIR=/opt/nuclei-templates
+# Templates do nuclei pré-baixados no build (dir legível); sem download em tempo de execução.
+# O nuclei instala em $HOME/nuclei-templates; usamos um HOME fixo só para este passo.
+ENV NUCLEI_TEMPLATES_DIR=/opt/pdhome/nuclei-templates
 RUN set -eux; \
-    nuclei -update-templates -templates-directory "$NUCLEI_TEMPLATES_DIR" -disable-update-check || true; \
-    chmod -R a+rX "$NUCLEI_TEMPLATES_DIR" 2>/dev/null || true
+    mkdir -p /opt/pdhome; \
+    HOME=/opt/pdhome nuclei -update-templates; \
+    chmod -R a+rX /opt/pdhome/nuclei-templates
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \

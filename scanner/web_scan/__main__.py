@@ -1,7 +1,7 @@
 """Worker da etapa 4: consome `scan.web.requested` e publica em `scan.candidates`."""
 
 from scanner.common.config import get_settings
-from scanner.common.db import make_session_factory
+from scanner.common.db import ScanStatus, make_session_factory, set_scan_status
 from scanner.common.logging import setup_logging
 from scanner.common.queue import STREAM_WEB_REQUESTED, connect, consume
 from scanner.web_scan.service import handle
@@ -22,6 +22,9 @@ def main() -> None:
         handler=lambda session, msg: handle(session, msg, settings, r, sessions),
         # Um scan pode levar o tempo máximo inteiro: só retentar depois disso (+10 min).
         retry_after_ms=(settings.scan_max_duration_minutes + 10) * 60_000,
+        on_give_up=lambda m: set_scan_status(
+            sessions, m.scan_id, ScanStatus.FAILED, "falhou após várias tentativas"
+        ),
     )
 
 
