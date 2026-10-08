@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from scanner.common.authz import UnauthorizedScanError, check_authorized
 from scanner.common.config import Settings
-from scanner.common.db import ScanStatus, set_scan_status
+from scanner.common.db import ScanStatus, set_pages_crawled, set_scan_status
 from scanner.common.models import Finding, StageMessage
 from scanner.common.queue import STREAM_CANDIDATES, make_message, publish
 from scanner.common.scope import ScopeGuard
@@ -185,6 +185,11 @@ def handle(
     except Exception:
         set_scan_status(sessions, msg.scan_id, ScanStatus.WEB_SCANNING, "retrying")
         raise
+    # Portão de cobertura: registra quantas páginas o rastreio alcançou e avisa se saiu raso.
+    pages = sum(zap.crawled_count(base) for base in msg.scope.base_urls)
+    set_pages_crawled(sessions, msg.scan_id, pages)
+    if pages < settings.coverage_min_pages:
+        log.warning("cobertura possivelmente parcial", extra={"pages_crawled": pages})
     set_scan_status(sessions, msg.scan_id, ScanStatus.VALIDATING, "validate")
     out = make_message(
         msg,

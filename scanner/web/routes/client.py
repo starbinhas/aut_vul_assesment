@@ -354,6 +354,10 @@ def scan_detail(
         scan=scan,
         target=target,
         report=report,
+        coverage_partial=(
+            scan.pages_crawled is not None
+            and scan.pages_crawled < request.app.state.settings.coverage_min_pages
+        ),
         items=_filter(report.items, sev, st, q) if report else [],
         comparison=comparison,
         new_keys={i.group_key for i in comparison.new} if comparison else set(),

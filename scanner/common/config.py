@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     # Navegadores do AJAX spider (mapeamento de sites JavaScript). Laboratório pode usar mais.
     scan_ajax_browsers: int = Field(default=1, ge=1, le=8)
     scan_lab_ajax_browsers: int = Field(default=4, ge=1, le=16)
+    # Portão de cobertura: abaixo disso de páginas rastreadas, o scan é marcado 'cobertura parcial'.
+    coverage_min_pages: int = Field(default=15, ge=1)
     # O perfil agressivo (testes que podem causar dano) só roda contra estes hosts.
     # Site de cliente nunca está aqui: a trava garante que o agressivo não o atinge.
     lab_hosts: list[str] = ["juice-shop", "dvwa", "localhost", "127.0.0.1"]

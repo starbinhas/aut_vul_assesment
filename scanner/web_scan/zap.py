@@ -314,6 +314,11 @@ class ZapScanner:
             if guard.allows(route):
                 self.zap.core.access_url(route, followredirects=False)
 
+    def crawled_count(self, base_url: str) -> int:
+        """Quantas páginas (URLs) o rastreio alcançou dentro do alvo — mede a cobertura."""
+        urls = self.zap.core.urls(base_url)
+        return len(urls) if isinstance(urls, list) else 0
+
     def passive_scan(self) -> None:
         def poll() -> tuple[bool, int | None, str | None]:
             remaining = int(self.zap.pscan.records_to_scan)

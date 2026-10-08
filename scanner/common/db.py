@@ -48,6 +48,8 @@ class Scan(Base):
         DateTime(timezone=True), nullable=True
     )
     progress_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Etapa 4: páginas rastreadas (para o portão de cobertura; None = ainda não medido).
+    pages_crawled: Mapped[int | None] = mapped_column(nullable=True)
     requested_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -182,6 +184,14 @@ class AuditLog(Base):
     object_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     object_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     detail: Mapped[dict[str, object]] = mapped_column(JsonType, default=dict)
+
+
+def set_pages_crawled(sessions, scan_id: str, pages: int) -> None:  # type: ignore[no-untyped-def]
+    """Grava quantas páginas o rastreio alcançou (portão de cobertura)."""
+    with sessions.begin() as session:
+        scan = session.get(Scan, scan_id)
+        if scan is not None:
+            scan.pages_crawled = pages
 
 
 def set_scan_status(

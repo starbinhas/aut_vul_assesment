@@ -5,15 +5,21 @@ from __future__ import annotations
 import logging
 import shutil
 import subprocess
+from urllib.parse import urljoin
 
+import httpx
 import redis
 from sqlalchemy.orm import Session, sessionmaker
 
 from scanner.common.config import Settings
 from scanner.common.models import Scope, StageMessage
+from scanner.common.scope import ScopeGuard
 from scanner.recon.naabu import DiscoveredPort, build_naabu_command, parse_naabu_jsonl
+from scanner.recon.routes import parse_robots, parse_sitemap
 
 log = logging.getLogger(__name__)
+
+MAX_ROUTES = 500  # teto de rotas semeadas, para não inundar a árvore do ZAP
 
 
 def run_naabu(host: str, timeout_s: int = 300) -> list[DiscoveredPort]:
@@ -52,6 +58,35 @@ def discover(scope: Scope, timeout_s: int = 300) -> list[DiscoveredPort]:
     return list(seen.values())
 
 
+def discover_routes(scope: Scope, timeout_s: int = 15) -> list[str]:
+    """Rotas que o próprio site publica (robots.txt + sitemap.xml), dentro do escopo.
+
+    Determinístico: não depende do rastreio ao vivo. Se os arquivos não existirem, devolve vazio.
+    """
+    guard = ScopeGuard(scope)
+    found: set[str] = set()
+    with httpx.Client(timeout=timeout_s, follow_redirects=True) as client:
+        for base in scope.base_urls:
+            sitemaps: list[str] = []
+            try:
+                robots = client.get(urljoin(base, "/robots.txt"))
+                if robots.status_code == 200:
+                    sitemaps, paths = parse_robots(robots.text, base)
+                    found.update(p for p in paths if guard.allows(p))
+            except httpx.HTTPError:
+                pass
+            for sm in sitemaps or [urljoin(base, "/sitemap.xml")]:
+                try:
+                    resp = client.get(sm)
+                    if resp.status_code == 200:
+                        found.update(u for u in parse_sitemap(resp.text) if guard.allows(u))
+                except httpx.HTTPError:
+                    pass
+    routes = sorted(found)[:MAX_ROUTES]
+    log.info("rotas descobertas (sitemap/robots)", extra={"routes": len(routes)})
+    return routes
+
+
 def handle(
     session: Session,
     msg: StageMessage,
@@ -79,6 +114,11 @@ def handle(
         log.error("recon indisponível, seguindo", extra={"error": str(exc)})
         ports = []
     log.info("recon: portas encontradas", extra={"ports": len(ports)})
+    # Rotas determinísticas (sitemap/robots) somadas às que já vieram: semeadas na árvore do ZAP.
+    payload = dict(msg.payload)
+    existing = list(payload.get("routes", []))
+    payload["routes"] = sorted(set(existing) | set(discover_routes(scope)))
+
     # Fan-out: etapa 3 (nuclei) e etapa 4 (ZAP) usam o mesmo escopo e correm em paralelo.
-    publish(r, STREAM_CVE_REQUESTED, make_message(msg, "cve.requested", dict(msg.payload)))
-    publish(r, STREAM_WEB_REQUESTED, make_message(msg, "web.requested", dict(msg.payload)))
+    publish(r, STREAM_CVE_REQUESTED, make_message(msg, "cve.requested", dict(payload)))
+    publish(r, STREAM_WEB_REQUESTED, make_message(msg, "web.requested", dict(payload)))
