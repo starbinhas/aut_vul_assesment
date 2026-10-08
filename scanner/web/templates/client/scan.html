@@ -3,7 +3,9 @@
 {% block title %}Scan {{ scan.created_at|dt }}{% endblock %}
 {% block content %}
 {% set domain = target.domain if target else scan.target_id %}
-{% if coverage_partial %}
+{% if scan.partial %}
+<div class="notice warn" role="status"><strong>Relatório parcial.</strong> O site ficou instável durante o teste e o scan não concluiu a parte de testes ativos — a <em>ausência</em> de falhas aqui não é confiável. Repita o scan com o site no ar.</div>
+{% elif coverage_partial %}
 <div class="notice warn" role="status"><strong>Cobertura parcial.</strong> O rastreio alcançou poucas páginas deste site nesta execução — pode haver áreas não testadas. Vale repetir o scan.</div>
 {% endif %}
 <div class="page-head">

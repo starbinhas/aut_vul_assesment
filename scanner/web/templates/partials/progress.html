@@ -26,6 +26,20 @@
     <div class="bar indeterminate" role="progressbar" aria-label="Em andamento"><span></span></div>
     {% endif %}
   </div>
+
+  {% if scan.status_detail == "target-unstable" %}
+  <div class="notice warn row between" role="status">
+    <span><strong>O site saiu do ar.</strong> O scan está esperando ele voltar para continuar de onde parou.</span>
+    {% if scan.stop_requested_at %}
+      <span class="faint small">Parada pedida — entregando o relatório parcial.</span>
+    {% else %}
+      <form method="post" action="/scans/{{ scan.scan_id }}/parar">
+        <input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}">
+        <button class="btn small ghost" type="submit">Parar e entregar o parcial</button>
+      </form>
+    {% endif %}
+  </div>
+  {% endif %}
   {% endif %}
 
   <p class="muted small mt-3" aria-live="polite">

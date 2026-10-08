@@ -413,6 +413,30 @@ def scan_progress(
     return render(request, "partials/progress.html", viewer, scan=scan, steps=labels.STEPS)
 
 
+@router.post("/scans/{scan_id}/parar")
+def scan_stop_partial(
+    scan_id: str,
+    viewer: Viewer = Depends(current_viewer),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Operador para a espera (alvo instável) e pede o relatório parcial agora.
+
+    Só marca a hora; o worker lê no laço de espera e entrega o parcial. Idempotente.
+    """
+    scan, target = get_scan(db, viewer, scan_id)
+    if scan.stop_requested_at is None:
+        scan.stop_requested_at = datetime.now(UTC)
+        audit(
+            db,
+            viewer,
+            "scan.stop_partial",
+            org_id=target.org_id if target else None,
+            object_type="scan",
+            object_id=scan.scan_id,
+        )
+    return RedirectResponse(f"/scans/{scan.scan_id}", 303)
+
+
 def _report_or_404(db: Session, viewer: Viewer, scan_id: str) -> Report:
     _, report = get_report(db, viewer, scan_id)
     if report is None:

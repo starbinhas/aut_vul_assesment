@@ -618,3 +618,34 @@ def test_progress_indeterminate_when_no_percent(env) -> None:
     assert "indeterminate" in html
     assert "30 respostas na fila" not in html  # número cru fora
     assert "Analisando as respostas" in html  # fase legível no lugar
+
+
+# --- parar e entregar parcial (alvo instável) --------------------------------------------
+
+
+def test_client_can_stop_own_scan_for_partial(env) -> None:
+    app, sessions, _ = env
+    c = login(app, "ana@loja-a.test")
+    r = c.post("/scans/scan-a/parar", data={"csrf_token": csrf_of(c, "/painel")})
+    assert r.status_code == 303
+    with sessions() as s:
+        assert s.get(Scan, "scan-a").stop_requested_at is not None
+        assert s.scalars(select(AuditLog).where(AuditLog.action == "scan.stop_partial")).first()
+
+
+def test_client_cannot_stop_other_org_scan(env) -> None:
+    app, sessions, _ = env
+    c = login(app, "ana@loja-a.test")
+    r = c.post("/scans/scan-b/parar", data={"csrf_token": csrf_of(c, "/painel")})
+    assert r.status_code == 404
+    with sessions() as s:
+        assert s.get(Scan, "scan-b").stop_requested_at is None  # não tocou no de outra org
+
+
+def test_stop_requires_csrf(env) -> None:
+    app, sessions, _ = env
+    c = login(app, "ana@loja-a.test")
+    r = c.post("/scans/scan-a/parar", data={})
+    assert r.status_code == 403
+    with sessions() as s:
+        assert s.get(Scan, "scan-a").stop_requested_at is None

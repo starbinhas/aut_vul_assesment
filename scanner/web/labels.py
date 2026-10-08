@@ -39,6 +39,7 @@ PHASE = {
     "passive": "Analisando as respostas",
     "active": "Testes ativos",
     "retrying": "Houve um erro; tentando de novo",
+    "target-unstable": "O site saiu do ar; esperando ele voltar para continuar",
 }
 STEPS = [
     ("requested", "Na fila"),
@@ -57,6 +58,7 @@ AUDIT = {
     "site.verified": "Comprovou domínio",
     "site.recurrence": "Mudou a recorrência",
     "scan.start": "Iniciou scan",
+    "scan.stop_partial": "Parou a espera e pediu o relatório parcial",
     "finding.review": "Revisou achado",
     "report.regenerate": "Pediu novo relatório",
     "org.create": "Criou cliente",
