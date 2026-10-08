@@ -237,6 +237,24 @@ def remember_routes(  # type: ignore[no-untyped-def]
             mem.scan_id = scan_id
 
 
+def last_pages_crawled(  # type: ignore[no-untyped-def]
+    sessions, target_id: str, exclude_scan_id: str
+) -> int | None:
+    """Cobertura do scan anterior deste alvo (para detectar regressão); None se não houver."""
+    with sessions() as session:
+        row = (
+            session.query(Scan.pages_crawled)
+            .filter(
+                Scan.target_id == target_id,
+                Scan.scan_id != exclude_scan_id,
+                Scan.pages_crawled.isnot(None),
+            )
+            .order_by(Scan.created_at.desc())
+            .first()
+        )
+        return row[0] if row is not None else None
+
+
 def set_scan_status(
     sessions: sessionmaker,  # type: ignore[type-arg]
     scan_id: str,

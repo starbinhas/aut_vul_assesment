@@ -14,6 +14,7 @@ from scanner.common.config import Settings
 from scanner.common.db import (
     ScanStatus,
     get_known_routes,
+    last_pages_crawled,
     remember_routes,
     set_pages_crawled,
     set_scan_status,
@@ -76,6 +77,15 @@ def resolve_limits(hosts: list[str], settings: Settings) -> ScanLimits:
     )
 
 
+def should_recrawl(
+    pages: int, min_pages: int, previous: int | None, regression_ratio: float
+) -> bool:
+    """Rastreio saiu raso e vale repetir? Abaixo do mínimo, ou regressão frente ao anterior."""
+    if pages < min_pages:
+        return True
+    return previous is not None and previous > 0 and pages < previous * regression_ratio
+
+
 def run_scan(
     zap: ZapScanner,
     msg: StageMessage,
@@ -85,6 +95,8 @@ def run_scan(
     on_crawl_done: Callable[[list[str]], None] | None = None,
     readiness_attempts: int = 10,
     readiness_delay_s: float = 3.0,
+    recrawl_decider: Callable[[int], bool] | None = None,
+    recrawl_max_retries: int = 0,
 ) -> list[Finding]:
     guard = ScopeGuard(msg.scope)
     zap.start_session(msg.scan_id)
@@ -109,12 +121,35 @@ def run_scan(
             zap.spider(base, context_name)
             zap.ajax_spider(base, context_name)
         zap.passive_scan()
+
         # Cobertura medida AQUI (fim do rastreio, antes do ativo): o scan ativo gera muitas URLs
-        # de teste e inflaria a conta. Isto mede (e memoriza) o que o rastreio realmente alcançou.
-        if on_crawl_done is not None:
-            crawled: list[str] = []
+        # de teste e inflaria a conta. Isto mede o que o rastreio realmente alcançou.
+        def measure() -> list[str]:
+            urls: list[str] = []
             for base in msg.scope.base_urls:
-                crawled.extend(zap.crawled_urls(base))
+                urls.extend(zap.crawled_urls(base))
+            return urls
+
+        crawled = measure()
+        # Re-rastreio quando a cobertura sai rasa/regride: refaz o AJAX spider (a parte variável)
+        # e remede. Limitado (recrawl_max_retries) para não arrastar o scan.
+        retries = 0
+        while (
+            recrawl_decider is not None
+            and retries < recrawl_max_retries
+            and recrawl_decider(len(crawled))
+        ):
+            retries += 1
+            log.warning(
+                "cobertura rasa; refazendo o rastreio",
+                extra={"pages": len(crawled), "retry": retries},
+            )
+            for base in msg.scope.base_urls:
+                guard.require(base)
+                zap.ajax_spider(base, context_name)
+            zap.passive_scan()
+            crawled = measure()
+        if on_crawl_done is not None:
             on_crawl_done(crawled)
         for base in msg.scope.base_urls:
             zap.active_scan(base, context_id)
@@ -215,6 +250,15 @@ def handle(
     seed_routes = sorted(
         set(msg.payload.get("routes", [])) | set(get_known_routes(sessions, msg.target_id))
     )
+
+    # Baseline para detectar regressão de cobertura (cobertura do scan anterior deste alvo).
+    previous_pages = last_pages_crawled(sessions, msg.target_id, msg.scan_id)
+
+    def recrawl_decider(pages: int) -> bool:
+        return should_recrawl(
+            pages, settings.coverage_min_pages, previous_pages, settings.recrawl_regression_ratio
+        )
+
     log.info(
         "semeadura de rotas",
         extra={"from_message": len(msg.payload.get("routes", [])), "total": len(seed_routes)},
@@ -230,6 +274,8 @@ def handle(
             on_crawl_done=on_crawl_done,
             readiness_attempts=settings.readiness_attempts,
             readiness_delay_s=settings.readiness_delay_seconds,
+            recrawl_decider=recrawl_decider,
+            recrawl_max_retries=settings.recrawl_max_retries,
         )
     except TargetNotReadyError as exc:
         # Alvo fora do ar: não rastreia vazio. Sem ack -> a fila re-tenta mais tarde (o alvo pode

@@ -60,3 +60,69 @@ def test_memory_is_per_target(sessions) -> None:
     remember_routes(sessions, "t2", "scan-2", ["http://b/1"])
     assert get_known_routes(sessions, "t1") == ["http://a/1"]
     assert get_known_routes(sessions, "t2") == ["http://b/1"]
+
+
+# --- regressão de cobertura: baseline do scan anterior -----------------------------------
+
+from datetime import datetime  # noqa: E402
+
+from scanner.common.db import Scan, last_pages_crawled  # noqa: E402
+
+
+def _add_scan(sessions, scan_id, target_id, pages, created):
+    with sessions.begin() as s:
+        s.add(
+            Scan(
+                scan_id=scan_id,
+                target_id=target_id,
+                scope={},
+                pages_crawled=pages,
+                created_at=created,
+            )
+        )
+
+
+def test_last_pages_crawled_none_when_no_history(sessions) -> None:
+    assert last_pages_crawled(sessions, "t1", "scan-now") is None
+
+
+def test_last_pages_crawled_picks_most_recent_other_scan(sessions) -> None:
+    _add_scan(sessions, "s1", "t1", 100, datetime(2026, 1, 1))
+    _add_scan(sessions, "s2", "t1", 800, datetime(2026, 2, 1))
+    _add_scan(sessions, "s3", "t2", 999, datetime(2026, 3, 1))  # outro alvo, ignorado
+    assert last_pages_crawled(sessions, "t1", "scan-now") == 800
+
+
+def test_last_pages_crawled_excludes_current_scan(sessions) -> None:
+    _add_scan(sessions, "s1", "t1", 100, datetime(2026, 1, 1))
+    _add_scan(sessions, "cur", "t1", 5, datetime(2026, 2, 1))  # o scan em curso não é baseline
+    assert last_pages_crawled(sessions, "t1", "cur") == 100
+
+
+def test_last_pages_crawled_ignores_unmeasured(sessions) -> None:
+    _add_scan(sessions, "s1", "t1", None, datetime(2026, 2, 1))
+    _add_scan(sessions, "s2", "t1", 100, datetime(2026, 1, 1))
+    assert last_pages_crawled(sessions, "t1", "scan-now") == 100
+
+
+# --- should_recrawl (função pura) --------------------------------------------------------
+
+from scanner.web_scan.service import should_recrawl  # noqa: E402
+
+
+def test_recrawl_when_below_minimum() -> None:
+    assert should_recrawl(5, min_pages=15, previous=None, regression_ratio=0.7) is True
+
+
+def test_no_recrawl_when_healthy_and_no_history() -> None:
+    assert should_recrawl(100, min_pages=15, previous=None, regression_ratio=0.7) is False
+
+
+def test_recrawl_on_regression_vs_previous() -> None:
+    # Anterior cobriu 800; hoje 300 (<70%): regressão -> refaz.
+    assert should_recrawl(300, min_pages=15, previous=800, regression_ratio=0.7) is True
+
+
+def test_no_recrawl_when_near_previous() -> None:
+    # 600 de 800 (75% >= 70%): aceitável, não refaz.
+    assert should_recrawl(600, min_pages=15, previous=800, regression_ratio=0.7) is False
