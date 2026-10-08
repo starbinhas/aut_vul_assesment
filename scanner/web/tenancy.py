@@ -12,7 +12,7 @@ from fastapi import HTTPException
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
-from scanner.common.db import Organization, Report, Scan, Target, User
+from scanner.common.db import Organization, Report, Scan, StagingAuthorization, Target, User
 
 
 @dataclass(frozen=True)
@@ -78,3 +78,11 @@ def get_report(session: Session, viewer: Viewer, scan_id: str) -> tuple[Scan, Re
 def org_name(session: Session, org_id: str | None) -> str | None:
     org = session.get(Organization, org_id) if org_id else None
     return org.name if org else None
+
+
+def get_staging(session: Session, viewer: Viewer, auth_id: str) -> StagingAuthorization:
+    """Pedido de cópia de teste (homologação) — mesma regra: de outra organização, 404."""
+    row = session.get(StagingAuthorization, auth_id)
+    if row is None or (not viewer.is_admin and row.org_id != viewer.org_id):
+        raise not_found()
+    return row

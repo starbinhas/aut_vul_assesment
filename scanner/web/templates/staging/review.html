@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Cópias de teste{% endblock %}
+{% block content %}
+{% set waiting = items|selectattr("row.status", "equalto", "requested")|list %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow"><a href="/admin">Admin</a> / cópias de teste</p>
+    <h1>{% if waiting %}{{ waiting|length|plural("cópia espera", "cópias esperam") }} revisão{% else %}Nenhuma cópia esperando revisão{% endif %}</h1>
+    <p class="lede">Aprovar libera o nível intrusivo (grava dados, faz o site acessar endereços externos) só no endereço da cópia, pelo prazo que o cliente escolheu.</p>
+  </div>
+</div>
+
+{% if error %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
+
+{% if not items %}
+<p class="empty muted">Quando um cliente assinar a autorização de uma cópia de teste, o pedido aparece aqui.</p>
+{% endif %}
+
+<section class="section">
+{% for it in items %}
+{% set r = it.row %}
+<article class="hml-request">
+  <div class="row between">
+    <h2 class="mb-0">{{ it.copy_site.domain }}</h2>
+    {% if r.status == "requested" %}<span class="pill live">Esperando revisão</span>
+    {% elif it.active %}<span class="pill ok">Liberada até {{ r.valid_until|dt }}</span>
+    {% elif it.expired %}<span class="pill">Venceu em {{ r.valid_until|dt }}</span>
+    {% elif r.status == "rejected" %}<span class="pill warn">Recusada</span>
+    {% else %}<span class="pill">Encerrada</span>{% endif %}
+  </div>
+  <p class="muted mt-2 mb-0">Cópia de <a href="/sites/{{ it.production.target_id }}">{{ it.production.domain }}</a> ({{ it.org }})</p>
+
+  <dl class="hml-facts">
+    <dt>Assinado por</dt><dd>{{ r.signer_name }}, {{ r.signer_role }}{% if it.signer_email %} <span class="faint">{{ it.signer_email }}</span>{% endif %}</dd>
+    <dt>Quando e de onde</dt><dd>{{ r.signed_at|dt }} <span class="mono small faint">{{ r.signer_ip or "IP não registrado" }}</span></dd>
+    <dt>Contato no teste</dt><dd>{{ r.emergency_contact }}</dd>
+    <dt>Validade pedida</dt><dd>{{ r.valid_days }} dias</dd>
+    <dt>Termo</dt><dd><span class="mono small">{{ r.term_version }} {{ (r.term_sha256 or "")[:16] }}</span></dd>
+    {% if r.review_note %}<dt>Nota da revisão</dt><dd>{{ r.review_note }}</dd>{% endif %}
+  </dl>
+
+  {% if it.checks %}
+  <h3 class="mt-5">Conferido sozinho</h3>
+  <ul class="hml-checks">
+    {% for c in it.checks %}
+    <li class="{{ 'ok' if c.ok else ('warn' if c.ok is sameas false else 'unknown') }}"><span class="t">{{ c.label }}</span><span class="d">{{ c.detail }}</span></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <h3 class="mt-5">O que o cliente confirmou</h3>
+  <ul class="hml-checks plain">
+    {% for key, text, _ in checklist %}
+    <li class="{{ 'ok' if r.checklist.get(key) else 'no' }}"><span class="d">{{ text }}</span></li>
+    {% endfor %}
+  </ul>
+
+  {% if r.status == "requested" %}
+  <form method="post" action="/admin/copias-de-teste/{{ r.auth_id }}/decidir" class="review-form">
+    <input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}">
+    <div class="field">
+      <label for="note-{{ r.auth_id }}">Nota para o cliente</label>
+      <input id="note-{{ r.auth_id }}" name="note" type="text" maxlength="500" placeholder="Obrigatória para recusar: diga o que ajustar">
+    </div>
+    <button class="btn primary" type="submit" name="decision" value="approve">Aprovar</button>
+    <button class="btn ghost" type="submit" name="decision" value="reject">Recusar</button>
+  </form>
+  {% elif it.active %}
+  <form method="post" action="/copias-de-teste/{{ r.auth_id }}/encerrar?admin=1" class="mt-4">
+    <input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}">
+    <button class="btn ghost" type="submit">Encerrar agora</button>
+  </form>
+  {% endif %}
+</article>
+{% endfor %}
+</section>
+{% endblock %}

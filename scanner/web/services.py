@@ -44,6 +44,7 @@ from scanner.common.queue import (
     STREAM_WEB_REQUESTED,
 )
 from scanner.common.scope import scope_for
+from scanner.common.staging import staging_cleared
 from scanner.report.models import Report as ReportModel
 from scanner.report.models import ReportItem
 from scanner.web.tenancy import Viewer
@@ -95,14 +96,18 @@ def active_scan(session: Session, target_id: str) -> Scan | None:
     ).first()
 
 
-def profiles_for(viewer: Viewer, target: Target, lab_hosts: list[str]) -> list[policy.ScanProfile]:
+def profiles_for(
+    viewer: Viewer, target: Target, lab_hosts: list[str], staging: bool = False
+) -> list[policy.ScanProfile]:
     """Perfis que esta pessoa pode pedir para este site.
 
-    Os não destrutivos, para todos. O agressivo só para admin E só em site de laboratório: a
-    interface é por onde o cliente aponta o scanner para produção, e lá ele nunca aparece.
+    Os que não gravam dados, para todos. O intrusivo só numa cópia de teste com autorização
+    vigente (`staging`, de `common.staging.staging_cleared`), para quem é da organização. O
+    agressivo (e o intrusivo no laboratório) só para admin E só em site de laboratório: a interface
+    é por onde o cliente aponta o scanner para produção, e lá eles nunca aparecem.
     """
-    lab = policy.is_lab_scope(scope_for(target).allowed_hosts, lab_hosts)
-    return [p for p in policy.PROFILES.values() if not p.destructive or (viewer.is_admin and lab)]
+    lab = viewer.is_admin and policy.is_lab_scope(scope_for(target).allowed_hosts, lab_hosts)
+    return [p for p in policy.PROFILES.values() if policy.is_cleared(p, lab=lab, staging=staging)]
 
 
 def start_scan(
@@ -116,9 +121,10 @@ def start_scan(
 ) -> Scan:
     """Regra 1: só site verificado; e um scan por vez por site.
 
-    Perfil destrutivo: só admin e só em site de laboratório (`profiles_for`), conferido aqui de
-    novo porque o formulário pode ser forjado. A trava definitiva continua no worker-web
-    (`resolve_profile`), que vale para qualquer origem da mensagem.
+    Perfil que grava dados: só em laboratório (admin) ou cópia de teste autorizada
+    (`profiles_for`), conferido aqui de novo porque o formulário pode ser forjado. A trava
+    definitiva continua no worker-web (`resolve_profile`), que vale para qualquer origem da
+    mensagem.
     """
     if target.verified_at is None:
         raise ScanNotAllowedError(
@@ -127,11 +133,12 @@ def start_scan(
     if active_scan(session, target.target_id) is not None:
         raise ScanNotAllowedError("em-andamento", "Já existe um scan em andamento para este site.")
     requested = policy.resolve(profile)
-    if requested not in profiles_for(viewer, target, lab_hosts):
+    scope = scope_for(target)
+    staging = staging_cleared(session, target.target_id, scope.allowed_hosts)
+    if requested not in profiles_for(viewer, target, lab_hosts, staging):
         raise ScanNotAllowedError(
             "perfil-nao-permitido", "Esse nível de scan não está liberado para este site."
         )
-    scope = scope_for(target)
     scan = Scan(
         scan_id=f"scan-{uuid.uuid4().hex[:12]}",
         target_id=target.target_id,
@@ -153,6 +160,7 @@ def start_scan(
         target=target.domain,
         profile=requested.name,
         destructive=requested.destructive,
+        staging_copy=staging,
     )
     msg = StageMessage(
         message_id=f"{scan.scan_id}:recon.requested",

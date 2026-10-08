@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% block title %}Cópia de teste de {{ t.domain }}{% endblock %}
+{% block content %}
+{% set steps = [
+  ("Criar a cópia", "Quem cuida do site faz uma cópia num endereço próprio."),
+  ("Comprovar o domínio da cópia", "Um registro DNS, igual ao do site oficial."),
+  ("Confirmar e assinar", "Seis confirmações em linguagem simples e o termo."),
+  ("Revisão do time", "Conferimos a cópia antes de liberar, em até 1 dia útil."),
+] %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow"><a href="/sites">Sites</a> / <a href="/sites/{{ t.target_id }}">{{ t.domain }}</a> / cópia de teste</p>
+    <h1>Teste intrusivo numa cópia do site</h1>
+    <p class="lede">O teste mais completo grava dados e força o servidor. Para não arriscar o site oficial, ele roda numa cópia que você pode apagar depois.</p>
+  </div>
+</div>
+
+{% if error %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
+
+<div class="split">
+  <div>
+    <ol class="checklist hml-steps" aria-label="Passos">
+      {% for title, hint in steps %}
+      {% set n = loop.index %}
+      <li class="{{ 'done' if step > n else ('now' if step == n else 'later') }}" {% if step == n %}aria-current="step"{% endif %}>
+        <div><span class="t">{{ title }}</span><p>{{ hint }}</p></div>
+      </li>
+      {% endfor %}
+    </ol>
+
+    <section class="section hml-panel" id="passo">
+
+    {# --- liberado ------------------------------------------------------------------- #}
+    {% if step == 5 %}
+      <h2>Teste intrusivo liberado em {{ copy.domain }}</h2>
+      <p class="muted">Vale até {{ row.valid_until|dt }}. Depois disso a cópia volta a aceitar só os níveis seguro e completo.</p>
+      <div class="row mt-4">
+        <a class="btn primary" href="/sites/{{ copy.target_id }}#novo-scan">Ir para a cópia e iniciar o teste</a>
+        <form method="post" action="/copias-de-teste/{{ row.auth_id }}/encerrar" class="inline">
+          <input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}">
+          <button class="btn ghost" type="submit">Encerrar a autorização agora</button>
+        </form>
+      </div>
+
+    {# --- esperando o time ------------------------------------------------------------ #}
+    {% elif step == 4 %}
+      <h2>Recebemos. Agora é com o time.</h2>
+      <p class="muted">Conferimos a cópia e o que você confirmou, em até 1 dia útil. Quando aprovarmos, o nível intrusivo aparece na página de {{ copy.domain }}.</p>
+      <dl class="hml-facts">
+        <dt>Assinado por</dt><dd>{{ row.signer_name }} ({{ row.signer_role }}), {{ row.signed_at|dt }}</dd>
+        <dt>Contato durante o teste</dt><dd>{{ row.emergency_contact }}</dd>
+        <dt>Validade</dt><dd>{{ row.valid_days }} dias a partir da aprovação</dd>
+      </dl>
+      <form method="post" action="/copias-de-teste/{{ row.auth_id }}/encerrar" class="mt-4">
+        <input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}">
+        <button class="btn ghost" type="submit">Cancelar o pedido</button>
+      </form>
+
+    {# --- passo 1: criar a cópia ------------------------------------------------------ #}
+    {% elif step == 1 %}
+      <h2>Peça a cópia a quem cuida do site</h2>
+      <p class="muted">Se o site foi feito por uma agência ou desenvolvedor, mande esta mensagem. Ela já diz tudo o que a cópia precisa ter.</p>
+      <div class="codeblock mt-3"><pre id="dev-message">{{ dev_message }}</pre><button class="btn small ghost copy" type="button" data-copy="dev-message">Copiar</button></div>
+      <details class="review mt-4">
+        <summary>Prefere fazer você mesmo?</summary>
+        <p class="small muted">Muitas hospedagens têm a opção "ambiente de teste" ou "staging" no painel, que cria a cópia com um clique. No WordPress, plugins como WP Staging fazem o mesmo. Depois, confira os itens da mensagem acima: banco separado, envio de e-mail desligado e pagamentos em modo de teste.</p>
+      </details>
+      <form method="post" action="/sites/{{ t.target_id }}/copia-de-teste" class="form-stack mt-5">
+        <input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}">
+        <div class="field">
+          <label for="copy_url">Endereço da cópia</label>
+          <input id="copy_url" name="copy_url" type="text" required value="{{ form.copy_url or '' }}" placeholder="teste.{{ t.domain }}" autocomplete="off">
+          <p class="hint">Diferente de {{ t.domain }}. Pode ser um subdomínio.</p>
+        </div>
+        <button class="btn primary" type="submit">Continuar</button>
+      </form>
+
+    {# --- passo 2: comprovar o domínio ------------------------------------------------- #}
+    {% elif step == 2 %}
+      <h2>Comprove que {{ copy.domain }} é de vocês</h2>
+      <p class="muted">Crie este registro no DNS da cópia. É a mesma prova que você fez para o site oficial.</p>
+      <div class="mt-4">
+        <div class="record"><span class="k">Tipo</span><span class="v">TXT</span><span></span></div>
+        <div class="record"><span class="k">Nome</span><span class="v" id="rec-name">{{ record_name }}</span><button class="btn small ghost" type="button" data-copy="rec-name">Copiar</button></div>
+        <div class="record"><span class="k">Valor</span><span class="v" id="rec-value">{{ record_value }}</span><button class="btn small ghost" type="button" data-copy="rec-value">Copiar</button></div>
+      </div>
+      {% if copy.last_check_error %}
+      <div class="notice warn mt-4" role="status"><strong>Ainda não deu certo.</strong> {{ copy.last_check_error }} <span class="faint">Última tentativa {{ copy.last_check_at|ago }}.</span></div>
+      {% endif %}
+      <details class="review mt-4">
+        <summary>Quem cria o registro é outra pessoa?</summary>
+        <div class="codeblock mt-3"><pre id="dns-message">{{ dns_message }}</pre><button class="btn small ghost copy" type="button" data-copy="dns-message">Copiar</button></div>
+      </details>
+      <form method="post" action="/copias-de-teste/{{ row.auth_id }}/verificar" class="mt-5">
+        <input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}">
+        <button class="btn primary" type="submit">Verificar agora</button>
+      </form>
+
+    {# --- passo 3: assinar (ou assinar de novo) ---------------------------------------- #}
+    {% elif row.status == "revoked" or expired %}
+      <h2>{{ "A autorização venceu" if expired else "A autorização foi encerrada" }}</h2>
+      <p class="muted">Para testar {{ copy.domain }} de novo no nível intrusivo, confirme os itens e assine outra vez. A cópia continua cadastrada.</p>
+      <form method="post" action="/copias-de-teste/{{ row.auth_id }}/renovar" class="mt-4">
+        <input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}">
+        <button class="btn primary" type="submit">Pedir nova autorização</button>
+      </form>
+
+    {% else %}
+      {% if row.status == "rejected" %}
+      <div class="notice warn" role="status"><strong>O time pediu um ajuste antes de liberar.</strong> {{ row.review_note }}</div>
+      {% endif %}
+      <h2>Confirme como é a cópia {{ copy.domain }}</h2>
+
+      {% if checks %}
+      <ul class="hml-checks" aria-label="O que conferimos sozinhos">
+        {% for c in checks %}
+        <li class="{{ 'ok' if c.ok else ('warn' if c.ok is sameas false else 'unknown') }}">
+          <span class="t">{{ c.label }}</span><span class="d">{{ c.detail }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+
+      {% if viewer.is_admin %}
+      <div class="notice mt-4">Quem assina é alguém da empresa dona do site. Mande este link para a pessoa responsável.</div>
+      {% else %}
+      <form method="post" action="/copias-de-teste/{{ row.auth_id }}/assinar" class="mt-5">
+        <input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}">
+        <fieldset class="hml-confirms">
+          <legend class="sr-only">Confirmações</legend>
+          {% for key, text, why in checklist %}
+          <label class="hml-confirm">
+            <input type="checkbox" name="confirm" value="{{ key }}" {% if key in (form.confirmed or ()) %}checked{% endif %} {% if key not in optional %}required{% endif %}>
+            <span><span class="t">{{ text }}{% if key in optional %} <span class="faint">(recomendado)</span>{% endif %}</span><span class="why">{{ why }}</span></span>
+          </label>
+          {% endfor %}
+        </fieldset>
+
+        <h3 class="mt-6">Por quanto tempo vale</h3>
+        <div class="row hml-days" role="radiogroup" aria-label="Validade">
+          {% for d in validity %}
+          <label class="chip"><input type="radio" name="days" value="{{ d }}" {% if d == days %}checked{% endif %}><span>{{ d }} dias</span></label>
+          {% endfor %}
+        </div>
+        <p class="hint faint small">Conta a partir da aprovação. Você pode encerrar antes, por esta página.</p>
+
+        <h3 class="mt-6">Termo de autorização</h3>
+        <div class="hml-term">
+          {% for p in term %}<p>{{ p }}</p>{% endfor %}
+        </div>
+
+        <div class="form-stack mt-5">
+          <div class="field">
+            <label for="signer_name">Seu nome completo</label>
+            <input id="signer_name" name="signer_name" type="text" required minlength="5" maxlength="200" value="{{ form.signer_name or viewer.name }}" autocomplete="name">
+          </div>
+          <div class="field">
+            <label for="signer_role">Cargo ou papel na empresa</label>
+            <input id="signer_role" name="signer_role" type="text" required maxlength="200" value="{{ form.signer_role or '' }}" placeholder="Sócia, gerente de TI, desenvolvedor responsável" autocomplete="organization-title">
+          </div>
+          <div class="field">
+            <label for="contact">Telefone ou e-mail durante o teste</label>
+            <input id="contact" name="contact" type="text" required minlength="8" maxlength="200" value="{{ form.contact or viewer.email }}">
+            <p class="hint">Para avisarmos na hora se a cópia cair ou algo sair do esperado.</p>
+          </div>
+          <label class="hml-confirm hml-accept">
+            <input type="checkbox" name="accept" value="yes" required>
+            <span><span class="t">Li o termo e autorizo o teste intrusivo em {{ copy.domain }}.</span></span>
+          </label>
+        </div>
+        <button class="btn primary mt-4" type="submit">Assinar e enviar para o time</button>
+      </form>
+      {% endif %}
+    {% endif %}
+    </section>
+  </div>
+
+  <aside class="muted small">
+    <p class="section-label">Por que não no site oficial</p>
+    <p>O teste intrusivo cadastra usuários, publica textos de teste e repete formulários centenas de vezes. Um backup devolve o banco, mas não desfaz os e-mails que chegaram aos seus clientes nem o tempo com o site lento.</p>
+    <p class="section-label mt-6">O que ele acha a mais</p>
+    <p>Falhas que só aparecem gravando dados ou fazendo o servidor acessar endereços externos: XSS que fica salvo na página, SSRF, inclusão remota, Log4Shell.</p>
+    <p class="section-label mt-6">O site oficial continua coberto</p>
+    <p>Os níveis seguro e completo seguem rodando em {{ t.domain }}, sem gravar dados.</p>
+  </aside>
+</div>
+{% endblock %}

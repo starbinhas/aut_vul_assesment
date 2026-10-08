@@ -16,7 +16,7 @@ from scanner.common.config import Settings
 from scanner.common.models import StageMessage
 from scanner.common.queue import publish
 from scanner.web.deps import LoginRequiredError, render
-from scanner.web.routes import admin, auth, client
+from scanner.web.routes import admin, auth, client, staging
 from scanner.web.security import security_headers
 
 STATIC = Path(__file__).parent / "static"
@@ -81,4 +81,6 @@ def create_app(
     app.include_router(auth.router)
     app.include_router(client.router)
     app.include_router(admin.router)
+    app.include_router(staging.router)
+    app.include_router(staging.admin_router)
     return app

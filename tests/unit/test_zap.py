@@ -40,6 +40,10 @@ class FakeAscan:
         self.strengths[scanner_id] = strength
         return "OK"
 
+    def disable_scanners(self, ids, scanpolicyname):
+        self.enabled -= set(ids.split(","))
+        return "OK"
+
     def scanners(self, name):
         return [{"id": i, "enabled": str(i in self.enabled).lower()} for i in self.available]
 
@@ -54,6 +58,7 @@ def scanner_with(available: set[str]) -> tuple[ZapScanner, FakeAscan]:
 
 SAFE = policy.PROFILES["safe"]
 AGGRESSIVE = policy.PROFILES["aggressive"]
+INTRUSIVE = policy.PROFILES["intrusive"]
 
 
 def test_safe_profile_skips_rules_missing_in_this_zap() -> None:
@@ -78,6 +83,24 @@ def test_aggressive_profile_enables_every_rule() -> None:
     # Inclui as destrutivas (30001 overflow, 40043 Log4Shell, 40046 SSRF).
     assert {"30001", "40043", "40046"} <= ascan.enabled
     assert ascan.strengths["30001"] == "HIGH"
+
+
+def test_intrusive_profile_enables_writes_but_not_overload() -> None:
+    z, ascan = scanner_with(
+        {str(i) for i in policy.SAFE_ACTIVE_RULES} | {"30001", "40044", "40014", "40046"}
+    )
+    z.configure_policy(INTRUSIVE)
+    # Grava dados (40014 XSS persistente) e faz o alvo sair (40046 SSRF)...
+    assert {"40014", "40046"} <= ascan.enabled
+    # ...mas nunca sobrecarga (30001 overflow, 40044 Billion Laughs).
+    assert not {"30001", "40044"} & ascan.enabled
+
+
+def test_intrusive_refuses_when_zap_keeps_overload_rule_on() -> None:
+    z, ascan = scanner_with({"40014", "30001"})
+    ascan.disable_scanners = lambda ids, scanpolicyname: "OK"  # type: ignore[method-assign]
+    with pytest.raises(ZapError):
+        z.configure_policy(INTRUSIVE)
 
 
 # --- login (autenticação pelo ZAP) -------------------------------------------------------

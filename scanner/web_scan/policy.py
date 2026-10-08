@@ -1,16 +1,20 @@
 """Perfis de scan ativo do ZAP (níveis de intensidade).
 
-Três níveis. Quanto mais alto, mais cobertura e mais risco para o alvo:
+Quatro níveis. Quanto mais alto, mais cobertura e mais risco para o alvo:
 
 - `safe`      — allowlist curada de regras não destrutivas. Padrão. Pode rodar em site de cliente.
 - `balanced`  — safe + detecções mais pesadas, porém ainda só de leitura (injeção baseada em
-                tempo, XSS DOM), força de ataque alta. Pode rodar em site de cliente.
-- `aggressive`— TODAS as regras instaladas do ZAP, incluindo as que gravam dados no alvo, fazem o
-                alvo sair para a internet (SSRF/RFI) ou pesam como DoS. **Só alvo de laboratório.**
+                tempo, XSS DOM, SSTI, NoSQL, vazamento de Git/SVN, CORS...). Pode rodar em cliente.
+- `intrusive` — todas as regras instaladas MENOS as de sobrecarga (`LAB_ONLY_RULES`): grava dados
+                e faz o alvo sair para a internet (SSRF/RFI/OAST). **Só em cópia de teste do
+                cliente, com autorização assinada e aprovada pelo time** (`common/staging.py`).
+- `aggressive`— TODAS as regras instaladas do ZAP, inclusive as que pesam como DoS. **Só alvo de
+                laboratório.**
 
-A trava do `aggressive` (destructive=True) é aplicada em `web_scan/service.py` contra a allowlist
-de hosts de laboratório: nunca atinge um site real, mesmo que alguém peça. As demais salvaguardas
-(autorização, escopo travado, limite de requisições/s e tempo máximo) valem em todos os perfis.
+A trava (`clearance` + `is_cleared`) é aplicada em `web_scan/service.py` (`resolve_profile`):
+laboratório pela allowlist `settings.lab_hosts`; cópia de teste pela autorização vigente no banco.
+Nunca atinge produção, mesmo que alguém peça. As demais salvaguardas (autorização, escopo travado,
+limite de requisições/s e tempo máximo) valem em todos os perfis.
 """
 
 from __future__ import annotations
@@ -49,8 +53,10 @@ SAFE_ACTIVE_RULES: dict[int, str] = {
     90029: "SOAP XML Injection",
 }
 
-# Mais cobertura, ainda só de leitura: variantes de injeção baseadas em tempo (mais lentas) e o
-# XSS baseado em DOM (principal lacuna apontada no Juice Shop). Nenhuma grava dados no alvo.
+# Mais cobertura, ainda só de leitura: variantes de injeção baseadas em tempo (mais lentas), o
+# XSS baseado em DOM (principal lacuna apontada no Juice Shop) e as regras beta/alpha que só leem.
+# Conferidas no help do ZAP (ascanrules 84, beta 67, alpha 58). Nenhuma grava dados no alvo, faz o
+# alvo sair para a internet (OAST) ou pesa como DoS.
 BALANCED_EXTRA_RULES: dict[int, str] = {
     40019: "SQL Injection - MySQL (baseada em tempo)",
     40020: "SQL Injection - Hypersonic (baseada em tempo)",
@@ -58,6 +64,55 @@ BALANCED_EXTRA_RULES: dict[int, str] = {
     40022: "SQL Injection - PostgreSQL (baseada em tempo)",
     40024: "SQL Injection - SQLite (baseada em tempo)",
     40026: "Cross Site Scripting (DOM Based)",
+    40027: "SQL Injection - MsSQL (baseada em tempo)",
+    40033: "NoSQL Injection - MongoDB",
+    90039: "NoSQL Injection - MongoDB (baseada em tempo)",
+    40015: "LDAP Injection",
+    90035: "Server Side Template Injection",
+    90037: "Remote OS Command Injection (baseada em tempo)",
+    20017: "Source Code Disclosure - CVE-2012-1823",
+    20018: "Remote Code Execution - CVE-2012-1823",  # mesmo tipo de prova do 90020 (eco)
+    40045: "Spring4Shell",  # valor inválido de propósito: o servidor recusa, nada muda
+    40048: "Remote Code Execution (React2Shell)",  # força um erro, sem executar nada
+    41: "Source Code Disclosure - Git",
+    42: "Source Code Disclosure - SVN",
+    43: "Source Code Disclosure - File Inclusion",
+    10047: "HTTPS Content Available via HTTP",
+    10051: "Relative Path Confusion",
+    10106: "HTTP Only Site",
+    20012: "Anti-CSRF Tokens Check",
+    20014: "HTTP Parameter Pollution",
+    20016: "Cross-Domain Misconfiguration",
+    40013: "Session Fixation",
+    40025: "Proxy Disclosure",
+    40038: "Bypassing 403",
+    40040: "CORS Header",
+    90024: "Generic Padding Oracle",
+}
+
+# Fora do `balanced` de propósito (ficam para o agressivo/intrusivo), mesmo sendo "só leitura":
+# - 90036 SSTI cego, 40043 Log4Shell, 40047 Text4shell, 40046 SSRF, 7 RFI, 40031 OOB XSS,
+#   10107 Httpoxy: fazem o alvo abrir conexão para fora (OAST/callback).
+# - 20015 Heartbleed: explora a falha e lê memória do servidor (dado real).
+# - 90034 Cloud Metadata: faz o proxy do cliente buscar o metadata da nuvem (dado real).
+# - 90028 Insecure HTTP Method: pode explorar PUT/PATCH. 40023 Username Enumeration: tentativas
+#   de login podem bloquear contas reais. 40039 Web Cache Deception: mexe no cache de usuários.
+# - 10104 User Agent Fuzzer e 90027 Cookie Slack: muitas requisições para achado só informativo.
+
+
+# Onde cada perfil pode rodar (`ScanProfile.clearance`).
+ANYWHERE = "any"  # qualquer site verificado, inclusive produção
+STAGING = "staging"  # cópia de teste com autorização assinada e aprovada (ou laboratório)
+LAB = "lab"  # só hosts de laboratório (`settings.lab_hosts`)
+
+# Nunca rodam fora do laboratório, nem em cópia autorizada: pesam como DoS (podem derrubar o
+# servidor, que muitas vezes é o mesmo do site oficial) ou executam scripts arbitrários.
+LAB_ONLY_RULES: dict[int, str] = {
+    30001: "Buffer Overflow",
+    30002: "Format String Error",
+    30003: "Integer Overflow Error",
+    40044: "Exponential Entity Expansion (Billion Laughs)",
+    50000: "Script Active Scan Rules",
 }
 
 
@@ -68,9 +123,11 @@ class ScanProfile:
     summary: str  # uma linha explicando o trade-off
     attack_strength: str  # LOW | MEDIUM | HIGH | INSANE
     alert_threshold: str  # LOW | MEDIUM | HIGH
-    destructive: bool  # True = pode alterar dados / pesar no alvo → só laboratório
-    # Conjunto de regras a ligar; None liga TODAS as regras instaladas do ZAP.
+    destructive: bool  # True = pode alterar dados no alvo → nunca em produção
+    # Conjunto de regras a ligar; None liga TODAS as regras instaladas do ZAP (menos `excluded`).
     rules: frozenset[int] | None
+    clearance: str = ANYWHERE
+    excluded: frozenset[int] = frozenset()
 
 
 PROFILES: dict[str, ScanProfile] = {
@@ -93,6 +150,18 @@ PROFILES: dict[str, ScanProfile] = {
         destructive=False,
         rules=frozenset(SAFE_ACTIVE_RULES) | frozenset(BALANCED_EXTRA_RULES),
     ),
+    "intrusive": ScanProfile(
+        name="intrusive",
+        label="Intrusivo (cópia de teste)",
+        summary="Tudo do completo seguro, mais os testes que gravam dados e fazem o site acessar "
+        "endereços externos. Sem testes de sobrecarga. Só em cópia de teste autorizada.",
+        attack_strength="HIGH",
+        alert_threshold="LOW",
+        destructive=True,
+        rules=None,
+        clearance=STAGING,
+        excluded=frozenset(LAB_ONLY_RULES),
+    ),
     "aggressive": ScanProfile(
         name="aggressive",
         label="Completo agressivo (laboratório)",
@@ -102,6 +171,7 @@ PROFILES: dict[str, ScanProfile] = {
         alert_threshold="LOW",
         destructive=True,
         rules=None,
+        clearance=LAB,
     ),
 }
 
@@ -111,6 +181,15 @@ DEFAULT_PROFILE = "safe"
 def resolve(name: str | None) -> ScanProfile:
     """Nome → perfil. Nome desconhecido ou vazio cai no perfil seguro."""
     return PROFILES.get(name or "", PROFILES[DEFAULT_PROFILE])
+
+
+def is_cleared(profile: ScanProfile, *, lab: bool, staging: bool) -> bool:
+    """O perfil pode rodar num alvo de laboratório (`lab`) / cópia autorizada (`staging`)?"""
+    if profile.clearance == LAB:
+        return lab
+    if profile.clearance == STAGING:
+        return lab or staging
+    return True
 
 
 def is_lab_scope(hosts: list[str], lab_hosts: list[str]) -> bool:

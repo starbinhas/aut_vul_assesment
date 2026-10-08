@@ -20,6 +20,16 @@
 
 {% if error %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
 
+{% if staging.role == "copy" and staging.other %}
+<div class="notice{{ ' ok' if staging.active }}" role="status">
+  <strong>Esta é a cópia de teste de {{ staging.other.domain }}.</strong>
+  {% if staging.active %}Teste intrusivo liberado até {{ staging.row.valid_until|dt }}.
+  {% elif staging.row.status == "requested" %}A autorização do teste intrusivo está com o time.
+  {% else %}O teste intrusivo não está liberado agora.{% endif %}
+  <a href="/sites/{{ staging.other.target_id }}/copia-de-teste">Ver a autorização</a>
+</div>
+{% endif %}
+
 {% if not t.verified_at %}
 <section class="section">
   <div class="split">
@@ -87,7 +97,7 @@
       <label class="profile lvl-{{ info.level or 1 }}{{ ' danger' if p.destructive }}">
         <input type="radio" name="profile" value="{{ p.name }}" {% if loop.first %}checked{% endif %}>
         <span class="profile-top">
-          <span class="meter" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="meter" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
           {% if info.tag %}<span class="profile-tag">{{ info.tag }}</span>{% endif %}
           <span class="radio" aria-hidden="true"></span>
         </span>
@@ -97,7 +107,7 @@
         {% if info.never %}<span class="profile-block never"><b>O que nunca faz</b>{{ info.never }}</span>{% endif %}
         {% if info.watch %}<span class="profile-block watch"><b>Atenção</b>{% for w in info.watch %}<span class="w">{{ w }}</span>{% endfor %}</span>{% endif %}
         <span class="profile-facts">
-          <span><b>{{ p.rules|length if p.rules else "Todos os" }}</b> testes ativos</span>
+          <span>{% if p.rules %}<b>{{ p.rules|length }}</b> testes ativos{% elif p.excluded %}<b>Todos</b> os testes ativos, menos os de sobrecarga{% else %}<b>Todos</b> os testes ativos{% endif %}</span>
           <span>Força de ataque <b>{{ {"LOW": "baixa", "MEDIUM": "média", "HIGH": "alta", "INSANE": "máxima"}.get(p.attack_strength, p.attack_strength) }}</b></span>
         </span>
       </label>
@@ -115,6 +125,21 @@
       <span class="faint small">Leva até {{ limits.minutes }} minutos. Pode fechar a página: o resultado aparece aqui.</span>
     </div>
   </form>
+</section>
+{% endif %}
+
+{% if staging.offer or staging.role == "production" %}
+<section class="section" id="copia-de-teste">
+  <div class="section-head">
+    <h2>Teste intrusivo</h2>
+    {% if staging.role == "production" and staging.other %}
+      {% if staging.active %}<span class="pill ok">Liberado em {{ staging.other.domain }} até {{ staging.row.valid_until|dt }}</span>
+      {% elif staging.row.status == "requested" %}<span class="pill">Esperando o time</span>
+      {% elif staging.row.status in ("draft", "rejected") %}<span class="pill warn">Falta terminar</span>{% endif %}
+    {% endif %}
+  </div>
+  <p class="muted">Os testes que gravam dados e fazem o servidor acessar endereços externos acham falhas que os níveis acima não alcançam. Eles rodam numa cópia do site, nunca em {{ t.domain }}.</p>
+  <a class="btn ghost" href="/sites/{{ t.target_id }}/copia-de-teste">{% if staging.role == "production" %}Ver a cópia de teste{% else %}Preparar uma cópia de teste{% endif %}</a>
 </section>
 {% endif %}
 

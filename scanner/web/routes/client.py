@@ -25,6 +25,7 @@ from scanner.common.db import (
 from scanner.common.models import Severity, Status
 from scanner.common.owasp import CATEGORIES
 from scanner.common.scope import scope_for
+from scanner.common.staging import staging_cleared
 from scanner.report import manual_checks
 from scanner.report.models import Report as ReportModel
 from scanner.report.models import ReportItem
@@ -47,6 +48,7 @@ from scanner.web.services import (
     start_scan,
     trend_paths,
 )
+from scanner.web.staging import staging_view
 from scanner.web.tenancy import Viewer, get_report, get_scan, get_target, not_found, scans_query
 from scanner.web.tenancy import targets_query as tq
 from scanner.web_scan import policy
@@ -269,6 +271,7 @@ def site_detail(
         if s.status == ScanStatus.DONE and (rep := reports.get(s.scan_id))
     ]
     line, area = trend_paths([n for _, n in history])
+    copy_cleared = staging_cleared(db, target.target_id, scope_for(target).allowed_hosts)
     return render(
         request,
         "client/site_detail.html",
@@ -282,7 +285,8 @@ def site_detail(
         record_name=verification.record_name(target.domain),
         record_value=verification.record_value(target.verification_token),
         recurrence=RECURRENCE,
-        profiles=profiles_for(viewer, target, request.app.state.settings.lab_hosts),
+        profiles=profiles_for(viewer, target, request.app.state.settings.lab_hosts, copy_cleared),
+        staging=staging_view(db, target, request.app.state.settings.lab_hosts),
         profile_info=labels.PROFILE_INFO,
         limits=_scan_limits(request.app.state.settings, target),
         auth_config=db.get(TargetAuthConfig, target_id),

@@ -28,7 +28,7 @@
       <span class="admin-tag">Admin</span>
       {# No celular os itens do admin viram um só ("Admin"); a visão geral do admin leva aos demais. #}
       <a class="item admin-compact" href="/admin" {% if path.startswith("/admin") %}aria-current="page"{% endif %}>Admin</a>
-      {% for href, label in [("/admin", "Operação"), ("/admin/clientes", "Clientes"), ("/admin/scans", "Scans"), ("/admin/auditoria", "Auditoria")] %}
+      {% for href, label in [("/admin", "Operação"), ("/admin/clientes", "Clientes"), ("/admin/scans", "Scans"), ("/admin/copias-de-teste", "Cópias de teste"), ("/admin/auditoria", "Auditoria")] %}
         <a class="item admin-full" href="{{ href }}" {% if path == href or (href != "/admin" and path.startswith(href)) %}aria-current="page"{% endif %}>{{ label }}</a>
       {% endfor %}
     {% endif %}

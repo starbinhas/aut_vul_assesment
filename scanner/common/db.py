@@ -394,3 +394,37 @@ class StageProgress(Base):
     scan_id: Mapped[str] = mapped_column(ForeignKey("scans.scan_id"), primary_key=True)
     tool: Mapped[str] = mapped_column(String(16), primary_key=True)
     done_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class StagingAuthorization(Base):
+    """Liberação do perfil intrusivo para uma CÓPIA de teste (homologação) do site do cliente.
+
+    Fluxo e regras em `scanner/common/staging.py`. Guarda o que foi assinado (versão e hash do
+    termo, checklist, quem, de onde) e a revisão do time. Nunca vale para o site oficial: o
+    escopo do scan tem de ser exatamente `staging_host`.
+    """
+
+    __tablename__ = "staging_authorizations"
+
+    auth_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organizations.org_id"), index=True)
+    production_target_id: Mapped[str] = mapped_column(ForeignKey("targets.target_id"), index=True)
+    staging_target_id: Mapped[str] = mapped_column(ForeignKey("targets.target_id"), index=True)
+    staging_host: Mapped[str] = mapped_column(String(253))
+    status: Mapped[str] = mapped_column(String(16))  # draft|requested|approved|rejected|revoked
+    checklist: Mapped[dict[str, object]] = mapped_column(JsonType, default=dict)
+    term_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    term_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    signer_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    signer_role: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    signer_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    signer_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    emergency_contact: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    valid_days: Mapped[int | None] = mapped_column(nullable=True)
+    signed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reviewed_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

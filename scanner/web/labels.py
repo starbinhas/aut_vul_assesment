@@ -71,6 +71,12 @@ AUDIT = {
     "user.active": "Reativou acesso",
     "user.inactive": "Desativou acesso",
     "user.password_reset": "Gerou nova senha",
+    "staging.register": "Cadastrou cópia de teste",
+    "staging.sign": "Assinou a autorização da cópia de teste",
+    "staging.approve": "Aprovou cópia de teste",
+    "staging.reject": "Recusou cópia de teste",
+    "staging.revoke": "Encerrou a autorização da cópia de teste",
+    "staging.renew": "Pediu nova autorização da cópia de teste",
 }
 
 
@@ -158,8 +164,9 @@ PROFILE_INFO: dict[str, dict[str, Any]] = {
         "level": 2,
         "pitch": "Mais fundo, ainda sem mexer em dados.",
         "tag": None,
-        "tests": "Tudo do seguro, mais injeção de SQL medida pelo tempo de resposta (MySQL, "
-        "PostgreSQL, Oracle, SQLite) e XSS que acontece no navegador (DOM).",
+        "tests": "Tudo do seguro, mais injeção medida pelo tempo de resposta (SQL, NoSQL, "
+        "comandos), XSS que acontece no navegador (DOM), injeção em templates (SSTI), código "
+        "exposto em .git e .svn, CORS mal configurado e fixação de sessão.",
         "never": "Não grava nem apaga dados.",
         "watch": [
             "Os testes por tempo fazem o banco esperar alguns segundos a cada tentativa: o site "
@@ -168,8 +175,23 @@ PROFILE_INFO: dict[str, dict[str, Any]] = {
         ],
         "button": "Iniciar scan completo",
     },
-    "aggressive": {
+    "intrusive": {
         "level": 3,
+        "pitch": "Para uma cópia de teste do site, com a sua autorização.",
+        "tag": "Cópia de teste",
+        "tests": "Tudo do completo, mais XSS que fica gravado no site, SSRF e inclusão remota "
+        "(o site tenta acessar endereços externos), Log4Shell, SSTI cego e métodos HTTP que "
+        "alteram arquivos.",
+        "never": "Não faz testes de sobrecarga e não toca no site oficial.",
+        "watch": [
+            "Grava cadastros, comentários e textos estranhos na cópia. Depois do teste, apague ou "
+            "refaça a cópia.",
+            "Só aparece numa cópia de teste aprovada pelo time, dentro da validade.",
+        ],
+        "button": "Iniciar scan intrusivo",
+    },
+    "aggressive": {
+        "level": 4,
         "pitch": "Tudo o que o scanner sabe fazer. Só em alvo de teste.",
         "tag": "Só laboratório",
         "tests": "Todos os testes, inclusive os que gravam dados, os que fazem o site acessar "

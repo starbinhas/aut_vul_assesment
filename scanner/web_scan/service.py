@@ -26,6 +26,7 @@ from scanner.common.db import (
 from scanner.common.models import Finding, StageMessage
 from scanner.common.queue import STREAM_CANDIDATES, make_message, publish
 from scanner.common.scope import ScopeGuard
+from scanner.common.staging import staging_cleared
 from scanner.web_scan import policy
 from scanner.web_scan.alerts import alert_to_finding
 from scanner.web_scan.policy import ScanProfile
@@ -43,20 +44,23 @@ log = logging.getLogger(__name__)
 
 
 class ProfileNotAllowedError(Exception):
-    """Perfil destrutivo pedido contra um alvo que não é de laboratório."""
+    """Perfil que pode causar dano pedido contra um alvo que não tem liberação para ele."""
 
 
-def resolve_profile(msg: StageMessage, lab_hosts: list[str]) -> ScanProfile:
-    """Perfil pedido na mensagem, com a trava do nível destrutivo (regra 3 + 4 do CLAUDE.md).
+def resolve_profile(msg: StageMessage, lab_hosts: list[str], staging: bool = False) -> ScanProfile:
+    """Perfil pedido na mensagem, com a trava dos níveis que gravam dados (regras 3 e 4).
 
-    Um perfil que pode causar dano só é liberado quando TODO host do escopo é de laboratório.
-    Contra qualquer outro alvo, recusa — não rebaixa em silêncio, para o pedido ficar explícito.
+    `aggressive` só quando TODO host do escopo é de laboratório. `intrusive` também numa cópia de
+    teste com autorização vigente (`staging`, consultado no banco por `staging_cleared`). Contra
+    qualquer outro alvo, recusa — não rebaixa em silêncio, para o pedido ficar explícito.
     """
     profile = policy.resolve(msg.payload.get("profile"))
-    if profile.destructive and not policy.is_lab_scope(msg.scope.allowed_hosts, lab_hosts):
+    lab = policy.is_lab_scope(msg.scope.allowed_hosts, lab_hosts)
+    if not policy.is_cleared(profile, lab=lab, staging=staging):
+        where = "laboratório" if profile.clearance == policy.LAB else "cópia de teste autorizada"
         outside = {h.lower() for h in msg.scope.allowed_hosts} - {h.lower() for h in lab_hosts}
         raise ProfileNotAllowedError(
-            f"perfil '{profile.name}' só roda em laboratório; fora da allowlist: {sorted(outside)}"
+            f"perfil '{profile.name}' só roda em {where}; fora da liberação: {sorted(outside)}"
         )
     return profile
 
@@ -261,7 +265,8 @@ def run_scan(
                 log.info("alvo voltou; retomando o scan ativo")
             else:
                 partial = True
-                reason = partial_reason_for(outcome, profile.destructive)
+                # Só o agressivo tem regras de sobrecarga; o intrusivo não derruba de propósito.
+                reason = partial_reason_for(outcome, profile.clearance == policy.LAB)
                 log.warning("entregando parcial (alvo instável)", extra={"reason": reason})
                 if on_partial is not None:
                     on_partial(reason)
@@ -343,8 +348,9 @@ def handle(
     # foi o que travou a migração 0003 por 25 min. A de fora só guarda a marca de idempotência.
     with sessions() as authz:
         check_authorized(authz, msg)
+        staging = staging_cleared(authz, msg.target_id, msg.scope.allowed_hosts)
     try:
-        profile = resolve_profile(msg, settings.lab_hosts)
+        profile = resolve_profile(msg, settings.lab_hosts, staging)
     except ProfileNotAllowedError as exc:
         # Pedido explícito e recusado: marca como falha e não tenta de novo (vai para dead-letter).
         log.error("perfil recusado", extra={"error": str(exc)})

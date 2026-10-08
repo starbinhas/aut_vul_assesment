@@ -219,8 +219,24 @@ class ZapScanner:
         )
 
         if profile.rules is None:
-            # Perfil agressivo (só laboratório): todas as regras instaladas.
+            # Intrusivo/agressivo: todas as regras instaladas, menos as excluídas do perfil.
             _ok(self.zap.ascan.enable_all_scanners(scanpolicyname=policy.POLICY_NAME), "enable_all")
+            if profile.excluded:
+                available = {s["id"] for s in self.zap.ascan.scanners(policy.POLICY_NAME)}
+                ids = ",".join(sorted({str(i) for i in profile.excluded} & available, key=int))
+                if ids:
+                    _ok(
+                        self.zap.ascan.disable_scanners(ids, scanpolicyname=policy.POLICY_NAME),
+                        "disable_scanners",
+                    )
+                enabled = {
+                    s["id"]
+                    for s in self.zap.ascan.scanners(policy.POLICY_NAME)
+                    if s["enabled"] == "true"
+                }
+                # Regra de sobrecarga ligada fora do laboratório é exatamente o que não pode passar.
+                if leaked := enabled & {str(i) for i in profile.excluded}:
+                    raise ZapError(f"regras excluídas continuam ligadas: {sorted(leaked, key=int)}")
         else:
             _ok(
                 self.zap.ascan.disable_all_scanners(scanpolicyname=policy.POLICY_NAME),
