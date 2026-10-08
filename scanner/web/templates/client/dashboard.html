@@ -14,7 +14,7 @@
     <h1>Nenhum scan concluído ainda.<br><span class="dim">{{ "O seu site já pode ser testado." if verified else "Falta comprovar que o domínio é seu." }}</span></h1>
   {% elif first %}
     {% set s, it = first %}
-    <h1>Corrija primeiro a <a href="/scans/{{ s.report_scan.scan_id }}#item-{{ item_id(it.group_key) }}">{{ it.finding.title }}</a> em <span class="nowrap">{{ s.target.domain }}</span>.</h1>
+    <h1><span class="dim">Corrija primeiro em <span class="nowrap">{{ s.target.domain }}</span>:</span><br><a href="/scans/{{ s.report_scan.scan_id }}#item-{{ item_id(it.group_key) }}">{{ it.finding.title|name }}</a></h1>
     <p class="lede">{{ it.status.value|status }}, severidade {{ it.severity.value|severity|lower }}, {{ it.locations|length|plural("página afetada", "páginas afetadas") }}.</p>
     {{ proof(it) }}
     <div class="actions">
@@ -40,27 +40,44 @@
 </section>
 {% else %}
 
-{% if new_items or fixed_items %}
+{% if new_items or gone_items or not_retested %}
 <section class="section">
   <h2>Desde o último scan</h2>
   <div class="ledger">
     <div>
       <h3><span class="n">{{ new_items|length }}</span> {{ "nova" if new_items|length == 1 else "novas" }}</h3>
       <ul class="list">
-        {% for s, it in new_items %}
-        <li><a href="/scans/{{ s.report_scan.scan_id }}#item-{{ item_id(it.group_key) }}">{{ it.finding.title }}</a>{{ sev(it.severity.value) }}</li>
+        {% for s, it in new_items[:5] %}
+        <li><a href="/scans/{{ s.report_scan.scan_id }}#item-{{ item_id(it.group_key) }}">{{ it.finding.title|name }}</a>{{ sev(it.severity.value) }}</li>
         {% else %}<li class="faint">Nenhuma falha nova.</li>{% endfor %}
       </ul>
+      {% if new_items|length > 5 %}
+      <details class="more"><summary>Ver as outras {{ new_items|length - 5 }}</summary>
+        <ul class="list">{% for s, it in new_items[5:] %}<li><a href="/scans/{{ s.report_scan.scan_id }}#item-{{ item_id(it.group_key) }}">{{ it.finding.title|name }}</a>{{ sev(it.severity.value) }}</li>{% endfor %}</ul>
+      </details>
+      {% endif %}
     </div>
     <div>
-      <h3><span class="n">{{ fixed_items|length }}</span> {{ "corrigida" if fixed_items|length == 1 else "corrigidas" }}</h3>
+      <h3><span class="n">{{ gone_items|length }}</span> {{ "não apareceu mais" if gone_items|length == 1 else "não apareceram mais" }}</h3>
       <ul class="list">
-        {% for s, it in fixed_items %}
-        <li class="fixed-item"><span>{{ it.finding.title }}</span><span class="small">não apareceu mais em {{ s.target.domain }}</span></li>
+        {% for s, it in gone_items[:5] %}
+        <li class="gone-item"><span>{{ it.finding.title|name }}</span><span class="small">{{ s.target.domain }}</span></li>
         {% else %}<li class="faint">Nenhuma ainda. Corrija e rode um novo scan para confirmar.</li>{% endfor %}
       </ul>
+      {% if gone_items|length > 5 %}
+      <details class="more"><summary>Ver as outras {{ gone_items|length - 5 }}</summary>
+        <ul class="list">{% for s, it in gone_items[5:] %}<li class="gone-item"><span>{{ it.finding.title|name }}</span><span class="small">{{ s.target.domain }}</span></li>{% endfor %}</ul>
+      </details>
+      {% endif %}
     </div>
   </div>
+  {% if not_retested %}
+  <details class="more mt-4">
+    <summary>{{ not_retested|length|plural("falha do scan anterior não foi testada", "falhas do scan anterior não foram testadas") }} desta vez</summary>
+    <p class="small muted">As páginas onde elas apareceram não foram alcançadas neste scan. Não contam como corrigidas: o próximo scan testa de novo.</p>
+    <ul class="list">{% for s, it in not_retested %}<li class="gone-item"><span>{{ it.finding.title|name }}</span><span class="small">{{ s.target.domain }}</span></li>{% endfor %}</ul>
+  </details>
+  {% endif %}
 </section>
 {% endif %}
 
@@ -74,7 +91,7 @@
     {% for s, it in fix_now[1:] %}
     <li>
       <div>
-        <a href="/scans/{{ s.report_scan.scan_id }}#item-{{ item_id(it.group_key) }}">{{ it.finding.title }}</a>
+        <a href="/scans/{{ s.report_scan.scan_id }}#item-{{ item_id(it.group_key) }}">{{ it.finding.title|name }}</a>
         <div class="faint small">{{ s.target.domain }}, {{ it.locations|length|plural("página", "páginas") }}</div>
       </div>
       <div class="row">{{ status(it.status.value) }} {{ sev(it.severity.value) }}</div>

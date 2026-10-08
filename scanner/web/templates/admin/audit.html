@@ -1,9 +1,10 @@
 {% extends "base.html" %}
+{% from "partials/macros.html" import audit_object %}
 {% block title %}Auditoria{% endblock %}
 {% block content %}
 <div class="page-head"><div><p class="eyebrow">Admin</p><h1>Auditoria</h1><p class="lede">Logins, revisões de achados, acessos criados e scans iniciados. Nada aqui pode ser apagado pela interface.</p></div></div>
 <form method="get" action="/admin/auditoria" class="form-row mb-4">
-  <div class="field"><label for="acao">Ação</label>
+  <div class="field field-narrow"><label for="acao">Ação</label>
     <select id="acao" name="acao"><option value="">Todas</option>{% for a in actions %}<option value="{{ a }}" {% if a == action %}selected{% endif %}>{{ a|audit }}</option>{% endfor %}</select></div>
   <button class="btn ghost" type="submit">Filtrar</button>
 </form>
@@ -15,9 +16,9 @@
   {% set u = users.get(e.user_id) %}
   <tr>
     <td class="small">{{ e.at|dt }}</td>
-    <td class="small">{{ u.email if u else "—" }}</td>
+    <td class="small">{% if u %}{{ u.name }}<div class="faint mono">{{ u.email }}</div>{% else %}—{% endif %}</td>
     <td class="small">{{ e.action|audit }}</td>
-    <td class="mono small faint">{{ e.object_type or "" }} {{ e.object_id or "" }}</td>
+    <td class="small muted">{{ audit_object(e, users, sites) }}</td>
     <td class="small muted">{% for k, v in e.detail.items() %}{{ k }}: {{ v }}{% if not loop.last %}; {% endif %}{% endfor %}</td>
   </tr>
   {% else %}<tr><td colspan="5" class="faint">Nada registrado.</td></tr>{% endfor %}

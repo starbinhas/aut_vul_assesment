@@ -50,6 +50,13 @@ class Scan(Base):
     progress_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Etapa 4: páginas rastreadas (para o portão de cobertura; None = ainda não medido).
     pages_crawled: Mapped[int | None] = mapped_column(nullable=True)
+    # Entrega parcial: o alvo caiu/ficou instável no meio e o scan não completou o ativo.
+    partial: Mapped[bool] = mapped_column(Boolean, default=False)
+    partial_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Operador pediu para parar a espera e entregar o parcial agora (lido pelo worker no laço).
+    stop_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     requested_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -253,6 +260,30 @@ def last_pages_crawled(  # type: ignore[no-untyped-def]
             .first()
         )
         return row[0] if row is not None else None
+
+
+def request_stop(sessions, scan_id: str) -> None:  # type: ignore[no-untyped-def]
+    """Interface pede ao worker para parar a espera e entregar o parcial (marca a hora)."""
+    with sessions.begin() as session:
+        scan = session.get(Scan, scan_id)
+        if scan is not None and scan.stop_requested_at is None:
+            scan.stop_requested_at = datetime.now(UTC)
+
+
+def is_stop_requested(sessions, scan_id: str) -> bool:  # type: ignore[no-untyped-def]
+    """O worker consulta no laço de espera se o operador pediu para entregar o parcial."""
+    with sessions() as session:
+        scan = session.get(Scan, scan_id)
+        return scan is not None and scan.stop_requested_at is not None
+
+
+def mark_partial(sessions, scan_id: str, reason: str) -> None:  # type: ignore[no-untyped-def]
+    """Marca o scan como entrega parcial (alvo instável), com o motivo, para a interface avisar."""
+    with sessions.begin() as session:
+        scan = session.get(Scan, scan_id)
+        if scan is not None:
+            scan.partial = True
+            scan.partial_reason = reason
 
 
 def set_scan_status(

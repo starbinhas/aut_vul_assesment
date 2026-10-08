@@ -18,7 +18,6 @@
       <td>{% if not u.is_active %}<span class="pill">Desativado</span>{% elif u.locked_until %}<span class="pill warn">Bloqueado</span>{% else %}<span class="pill ok">Ativo</span>{% endif %}</td>
       <td class="ta-right">
         <form method="post" action="/admin/usuarios/{{ u.user_id }}/senha" class="inline"><input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}"><button class="linkish small" type="submit">Nova senha</button></form>
-        ·
         <form method="post" action="/admin/usuarios/{{ u.user_id }}/ativo" class="inline"><input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}"><button class="linkish small" type="submit">{{ "Desativar" if u.is_active else "Reativar" }}</button></form>
       </td>
     </tr>

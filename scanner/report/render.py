@@ -7,6 +7,7 @@ from typing import Any, NoReturn
 from jinja2 import Environment, PackageLoader, select_autoescape
 
 from scanner.report.models import Report
+from scanner.report.names import client_reason, display_title, is_command
 
 SEVERITY_PT = {
     "critical": "Crítica",
@@ -27,6 +28,9 @@ _env = Environment(
     loader=PackageLoader("scanner.report", "templates"),
     autoescape=select_autoescape(default=True, default_for_string=True),
 )
+_env.filters["name"] = display_title
+_env.filters["reason"] = client_reason
+_env.tests["command"] = is_command
 _env.filters["severity_pt"] = lambda s: SEVERITY_PT.get(str(s), str(s))
 _env.filters["status_pt"] = lambda s: STATUS_PT.get(str(s), str(s))
 

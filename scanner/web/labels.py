@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from scanner.report import names
+
 SEVERITY = {
     "critical": "Crítica",
     "high": "Alta",
@@ -83,6 +85,20 @@ def scan_status(value: object) -> str:
 
 def phase(value: object) -> str:
     return PHASE.get(str(value), str(value)) if value else ""
+
+
+def public_phase(value: object) -> str:
+    """Só fases conhecidas: `status_detail` também guarda notas livres da operação (motivo de
+    cancelamento), que o cliente não deve ver."""
+    return PHASE.get(str(value), "") if value else ""
+
+
+def is_command(value: object) -> bool:
+    return names.is_command(value)
+
+
+def reason(value: object) -> str:
+    return sentence(names.client_reason(str(value or "")))
 
 
 def sentence(value: object) -> str:

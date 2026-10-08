@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     recrawl_max_retries: int = Field(default=1, ge=0)
     # Regressão: cobertura abaixo desta fração da do scan anterior conta como rasa (0.7 = 70%).
     recrawl_regression_ratio: float = Field(default=0.7, ge=0, le=1)
+    # Alvo instável no meio do scan: quanto esperar o alvo voltar antes de entregar o parcial,
+    # e de quanto em quanto tempo sondar se ele voltou.
+    target_recovery_max_wait_minutes: int = Field(default=10, ge=0)
+    target_recovery_probe_interval_seconds: float = Field(default=15.0, ge=1)
     # O perfil agressivo (testes que podem causar dano) só roda contra estes hosts.
     # Site de cliente nunca está aqui: a trava garante que o agressivo não o atinge.
     lab_hosts: list[str] = ["juice-shop", "dvwa", "localhost", "127.0.0.1"]

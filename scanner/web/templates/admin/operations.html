@@ -8,7 +8,7 @@
   <div class="section-head"><h2 class="mono">{{ q.name }}</h2><span class="section-label">{{ q.group or "saída para o time" }}</span></div>
   <div class="legend"><span><b>{{ q.length }}</b>mensagens no stream</span><span><b>{{ q.pending }}</b>pendentes</span><span><b class="{{ 'sev-high' if q.dead }}">{{ q.dead }}</b>rejeitadas</span></div>
   {% if q.consumers %}
-  <ul class="pages mt-4">{% for c in q.consumers %}<li><span>{{ c.name }}</span><span>{{ c.pending }} pendente(s), parado há {{ c.idle_s }} s</span></li>{% endfor %}</ul>
+  <ul class="pages mt-4">{% for c in q.consumers %}<li><span>{{ c.name }}</span><span class="consumer-state">{{ c.pending|plural("pendente", "pendentes") }}, sem atividade há {{ c.idle_s }} s</span></li>{% endfor %}</ul>
   {% endif %}
   {% if q.dead_entries %}
   <details class="mt-4"><summary class="small muted">Últimas rejeitadas</summary>

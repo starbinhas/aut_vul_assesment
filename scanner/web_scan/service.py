@@ -15,7 +15,9 @@ from scanner.common.config import Settings
 from scanner.common.db import (
     ScanStatus,
     get_known_routes,
+    is_stop_requested,
     last_pages_crawled,
+    mark_partial,
     remember_routes,
     set_pages_crawled,
     set_scan_status,
@@ -87,6 +89,41 @@ def should_recrawl(
     return previous is not None and previous > 0 and pages < previous * regression_ratio
 
 
+# Resultado da espera pelo alvo voltar (instabilidade no meio do scan).
+RECOVERED = "recovered"  # alvo voltou -> retoma a busca
+STOPPED = "stopped"  # operador pediu para entregar o parcial agora
+GAVE_UP = "gave_up"  # estourou o tempo de espera -> entrega o parcial
+
+
+def wait_for_target_recovery(
+    zap: ZapScanner,
+    base_urls: list[str],
+    probe_interval_s: float,
+    max_wait_s: float,
+    should_stop: Callable[[], bool],
+    on_wait: Callable[[float], None] | None = None,
+) -> str:
+    """Espera o alvo (caído no meio do scan) voltar, para retomar a busca.
+
+    Sonda todos os `base_urls` a cada `probe_interval_s`. Devolve assim que:
+    - todos respondem de novo -> RECOVERED (o scan retoma o ativo);
+    - o operador manda parar   -> STOPPED  (entrega o parcial);
+    - estoura `max_wait_s`     -> GAVE_UP  (entrega o parcial).
+    """
+    start = time.monotonic()
+    while True:
+        if all(zap.is_target_up(b) for b in base_urls):
+            return RECOVERED
+        if should_stop():
+            return STOPPED
+        waited = time.monotonic() - start
+        if waited >= max_wait_s:
+            return GAVE_UP
+        if on_wait is not None:
+            on_wait(waited)
+        time.sleep(probe_interval_s)
+
+
 def run_scan(
     zap: ZapScanner,
     msg: StageMessage,
@@ -98,6 +135,10 @@ def run_scan(
     readiness_delay_s: float = 3.0,
     recrawl_decider: Callable[[int], bool] | None = None,
     recrawl_max_retries: int = 0,
+    should_stop: Callable[[], bool] | None = None,
+    on_partial: Callable[[str], None] | None = None,
+    recovery_probe_interval_s: float = 15.0,
+    recovery_max_wait_s: float = 600.0,
 ) -> list[Finding]:
     guard = ScopeGuard(msg.scope)
     zap.start_session(msg.scan_id)
@@ -115,6 +156,7 @@ def run_scan(
         zap.set_credential(credential)
 
     timed_out = False
+    partial = False
     crawled: list[str] = []
     retries = 0
     crawl_seconds = active_seconds = 0.0
@@ -156,10 +198,41 @@ def run_scan(
         if on_crawl_done is not None:
             on_crawl_done(crawled)
         crawl_seconds = time.monotonic() - crawl_start
-        active_start = time.monotonic()
-        for base in msg.scope.base_urls:
-            zap.active_scan(base, context_id)
-        active_seconds = time.monotonic() - active_start
+
+        # Guarda de saúde no meio do scan: o alvo estava de pé no início, mas pode ter caído
+        # durante o rastreio. Se caiu, espera ele voltar para RETOMAR a busca (ativo). Se demorar
+        # demais ou o operador mandar parar, entrega o PARCIAL (pula o ativo) e marca 'instável'.
+        if not all(zap.is_target_up(base) for base in msg.scope.base_urls):
+            log.warning("alvo caiu no meio do scan; aguardando voltar")
+
+            def _waiting(waited: float) -> None:
+                if zap.on_progress is not None:
+                    zap.on_progress(
+                        "target-unstable", None, f"aguardando o alvo voltar ({int(waited)}s)"
+                    )
+
+            outcome = wait_for_target_recovery(
+                zap,
+                msg.scope.base_urls,
+                recovery_probe_interval_s,
+                recovery_max_wait_s,
+                should_stop or (lambda: False),
+                on_wait=_waiting,
+            )
+            if outcome == RECOVERED:
+                log.info("alvo voltou; retomando o scan ativo")
+            else:
+                partial = True
+                reason = "operator-stopped" if outcome == STOPPED else "target-unstable"
+                log.warning("entregando parcial (alvo instável)", extra={"reason": reason})
+                if on_partial is not None:
+                    on_partial(reason)
+
+        if not partial:
+            active_start = time.monotonic()
+            for base in msg.scope.base_urls:
+                zap.active_scan(base, context_id)
+            active_seconds = time.monotonic() - active_start
     except ScanTimeoutError as exc:
         # Entrega o que já foi achado; o tempo máximo é um limite de segurança, não um erro.
         log.warning("scan interrompido pelo tempo máximo", extra={"error": str(exc)})
@@ -179,6 +252,7 @@ def run_scan(
             "pages_crawled": len(crawled),
             "recrawl_retries": retries,
             "timed_out": timed_out,
+            "partial": partial,
         },
     )
 
@@ -300,6 +374,10 @@ def handle(
             readiness_delay_s=settings.readiness_delay_seconds,
             recrawl_decider=recrawl_decider,
             recrawl_max_retries=settings.recrawl_max_retries,
+            should_stop=lambda: is_stop_requested(sessions, msg.scan_id),
+            on_partial=lambda reason: mark_partial(sessions, msg.scan_id, reason),
+            recovery_probe_interval_s=settings.target_recovery_probe_interval_seconds,
+            recovery_max_wait_s=settings.target_recovery_max_wait_minutes * 60,
         )
     except TargetNotReadyError as exc:
         # Alvo fora do ar: não rastreia vazio. Sem ack -> a fila re-tenta mais tarde (o alvo pode

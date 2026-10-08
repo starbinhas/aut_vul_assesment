@@ -15,6 +15,7 @@ from scanner.common.db import Organization, Report, Scan, ScanStatus, StageProgr
 from scanner.common.models import Severity, Status
 from scanner.report.models import Report as ReportModel
 from scanner.report.models import ReportItem
+from scanner.report.names import display_title
 from scanner.web import labels, verification
 from scanner.web.deps import current_viewer, get_db, render
 from scanner.web.security import csrf_protect
@@ -67,7 +68,12 @@ def _site_summary(db: Session, target: Target) -> SiteSummary:
     comparison = None
     if done and report:
         prev = previous_done_scan(db, done)
-        comparison = compare(report, load_report(db.get(Report, prev.scan_id)) if prev else None)
+        comparison = compare(
+            report,
+            load_report(db.get(Report, prev.scan_id)) if prev else None,
+            done.pages_crawled,
+            prev.pages_crawled if prev else None,
+        )
     org = db.get(Organization, target.org_id)
     return SiteSummary(target, org.name if org else None, last, report, done, comparison)
 
@@ -86,8 +92,9 @@ def dashboard(
     sites = [_site_summary(db, t) for t in db.scalars(tq(viewer))]
     fix_now: list[tuple[SiteSummary, ReportItem]] = []
     new_items: list[tuple[SiteSummary, ReportItem]] = []
-    fixed_items: list[tuple[SiteSummary, ReportItem]] = []
-    totals = dict.fromkeys(("new", "fixed", "open"), 0)
+    gone_items: list[tuple[SiteSummary, ReportItem]] = []
+    not_retested: list[tuple[SiteSummary, ReportItem]] = []
+    totals = dict.fromkeys(("new", "gone", "open"), 0)
     for s in sites:
         if s.report:
             open_items = [i for i in s.report.items if i.status in OPEN]
@@ -100,9 +107,10 @@ def dashboard(
             ]
         if s.comparison:
             totals["new"] += len(s.comparison.new)
-            totals["fixed"] += len(s.comparison.fixed)
+            totals["gone"] += len(s.comparison.gone)
             new_items += [(s, i) for i in s.comparison.new]
-            fixed_items += [(s, i) for i in s.comparison.fixed]
+            gone_items += [(s, i) for i in s.comparison.gone]
+            not_retested += [(s, i) for i in s.comparison.not_retested]
     fix_now.sort(key=lambda p: (-p[1].severity.rank, p[1].status != Status.CONFIRMED))
     recent = db.scalars(scans_query(viewer).limit(8)).all()
     domains = {s.target.target_id: s.target.domain for s in sites}
@@ -114,7 +122,8 @@ def dashboard(
         sites=sites,
         fix_now=fix_now[:6],
         new_items=sorted(new_items, key=lambda p: -p[1].severity.rank),
-        fixed_items=sorted(fixed_items, key=lambda p: -p[1].severity.rank),
+        gone_items=sorted(gone_items, key=lambda p: -p[1].severity.rank),
+        not_retested=sorted(not_retested, key=lambda p: -p[1].severity.rank),
         totals=totals,
         recent=recent,
         domains=domains,
@@ -321,6 +330,7 @@ def _filter(items: list[ReportItem], sev: list[str], st: list[str], q: str) -> l
         and (
             not q
             or q in i.finding.title.lower()
+            or q in display_title(i.finding.title).lower()
             or any(q in loc.url.lower() for loc in i.locations)
         )
     ]
@@ -342,7 +352,12 @@ def scan_detail(
     comparison = None
     if report:
         prev = previous_done_scan(db, scan)
-        comparison = compare(report, load_report(db.get(Report, prev.scan_id)) if prev else None)
+        comparison = compare(
+            report,
+            load_report(db.get(Report, prev.scan_id)) if prev else None,
+            scan.pages_crawled,
+            prev.pages_crawled if prev else None,
+        )
     tools_done = list(
         db.scalars(select(StageProgress.tool).where(StageProgress.scan_id == scan_id))
     )
@@ -360,10 +375,24 @@ def scan_detail(
         ),
         items=_filter(report.items, sev, st, q) if report else [],
         comparison=comparison,
+        uniform_status=(
+            report.items[0].status
+            if report and report.items and len({i.status for i in report.items}) == 1
+            else None
+        ),
         new_keys={i.group_key for i in comparison.new} if comparison else set(),
         filters={"sev": sev, "st": st, "q": q},
-        severities=list(Severity),
-        statuses=[Status.CONFIRMED, Status.LIKELY, Status.UNCONFIRMED],
+        # Só filtros que mudam algo: severidade/situação presente no relatório (ou já marcada).
+        severities=[
+            s
+            for s in Severity
+            if s.value in sev or (report and report.summary.by_severity.get(s.value))
+        ],
+        statuses=[
+            s
+            for s in (Status.CONFIRMED, Status.LIKELY, Status.UNCONFIRMED)
+            if s.value in st or (report and report.summary.by_status.get(s.value))
+        ],
         steps=labels.STEPS,
         item_id=item_id,
         pending_reviews=reviews_since_report(db, scan_id, report_row) if viewer.is_admin else 0,

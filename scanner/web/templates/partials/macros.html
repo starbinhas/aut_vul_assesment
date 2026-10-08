@@ -40,6 +40,36 @@
 {% endif %}
 {%- endmacro %}
 
+{# Resumo do que mudou desde o scan anterior. Ausência não é correção: "não apareceu mais" só quando a
+   página voltou a ser testada; o resto fica em "não testadas desta vez". #}
+{% macro changes(c, details=true) -%}
+<div class="legend">
+  <span><b>{{ c.new|length }}</b>{{ "nova" if c.new|length == 1 else "novas" }}</span>
+  <span><b>{{ c.gone|length }}</b>{{ "não apareceu mais" if c.gone|length == 1 else "não apareceram mais" }}</span>
+  <span><b>{{ c.persisting|length }}</b>{{ "continua" if c.persisting|length == 1 else "continuam" }}</span>
+  {% if c.not_retested %}<span><b>{{ c.not_retested|length }}</b>{{ "não testada desta vez" if c.not_retested|length == 1 else "não testadas desta vez" }}</span>{% endif %}
+</div>
+{% if c.coverage_dropped %}
+<p class="small muted mt-2">Este scan percorreu {{ c.pages_now }} páginas; o anterior, {{ c.pages_before }}. Parte do que sumiu pode só não ter sido testado.</p>
+{% endif %}
+{% if details and (c.gone or c.not_retested) %}
+<details class="more mt-2"><summary>Ver o que sumiu</summary>
+  <ul class="pages mt-2">
+    {% for it in c.gone %}<li><span>{{ it.finding.title|name }}</span><span class="faint">não apareceu mais</span></li>{% endfor %}
+    {% for it in c.not_retested %}<li><span>{{ it.finding.title|name }}</span><span class="faint">página não testada</span></li>{% endfor %}
+  </ul>
+</details>
+{% endif %}
+{%- endmacro %}
+
+{# Objeto de uma linha da auditoria pelo nome (usuário, site), não pelo identificador interno. #}
+{% macro audit_object(e, users, sites) -%}
+{% if e.object_type == "user" and users.get(e.object_id) %}{{ users[e.object_id].name }}
+{%- elif e.object_type in ("target", "site") and sites.get(e.object_id) %}{{ sites[e.object_id].domain }}
+{%- elif e.object_type == "scan" and e.object_id %}<a class="mono" href="/scans/{{ e.object_id }}">{{ e.object_id }}</a>
+{%- else %}{{ e.object_id or "" }}{% endif %}
+{%- endmacro %}
+
 {% macro csrf_input(csrf_field, csrf) -%}
 <input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}">
 {%- endmacro %}
@@ -51,7 +81,7 @@
 {% set p = v.proof %}
 <div class="proof {{ 'compact' if (compact or not p) }}" data-sev="{{ item.severity.value }}">
   <div class="head">
-    <span>{% if item.status.value in ("confirmed", "likely") %}<strong>Como provamos.</strong>{% else %}<strong>Sem prova automática.</strong>{% endif %} {{ v.reason|sentence }}.</span>
+    <span>{% if item.status.value in ("confirmed", "likely") %}<strong>Como provamos.</strong>{% else %}<strong>Sem prova automática.</strong>{% endif %} {{ v.reason|reason }}.</span>
   </div>
   {% if p and not compact %}
   <dl>

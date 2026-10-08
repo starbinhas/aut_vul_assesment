@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 
+import httpx
 import redis
 from sqlalchemy import select as sql_select
 from sqlalchemy.dialects.postgresql import insert
@@ -34,12 +35,22 @@ OUTCOME_TO_STATUS = {
 def validate_one(f: Finding, client: ProbeClient) -> Finding:
     v = select(f)
     if v is None:
-        validation = result("none", Outcome.UNCONFIRMED, "ainda não há validador para esta família")
+        validation = result(
+            "none", Outcome.UNCONFIRMED, "ainda não temos teste automático para este tipo de falha"
+        )
     else:
         try:
             validation = v.fn(f, client)
         except (OutOfScopeError, UnsafeRequestError) as exc:
             validation = result(v.name, Outcome.UNCONFIRMED, f"prova não executada: {exc}")
+        except httpx.TransportError as exc:
+            # Alvo fora do ar ou lento na hora da prova: dizer isso, não "erro" genérico.
+            log.warning(
+                "alvo não respondeu à prova", extra={"validator": v.name, "error": str(exc)}
+            )
+            validation = result(
+                v.name, Outcome.UNCONFIRMED, "o site não respondeu quando repetimos o teste"
+            )
         except Exception as exc:
             log.warning("validador falhou", extra={"validator": v.name, "error": str(exc)})
             validation = result(v.name, Outcome.UNCONFIRMED, "erro ao executar a prova")
@@ -79,9 +90,7 @@ def handle(
     tool = msg.payload["tool"]
     candidates = [Finding.model_validate(d) for d in msg.payload.get("findings", [])]
     candidates = [c for c in candidates if c.scan_id == msg.scan_id]
-    set_scan_status(
-        sessions, msg.scan_id, ScanStatus.VALIDATING, "validate"
-    )
+    set_scan_status(sessions, msg.scan_id, ScanStatus.VALIDATING, "validate")
 
     existing = [
         Finding.model_validate(row.data)

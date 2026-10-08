@@ -307,6 +307,19 @@ class ZapScanner:
             time.sleep(POLL_SECONDS)
         log.info("fase concluída", extra={"phase": label})
 
+    def target_status(self, url: str) -> int | None:
+        """Código HTTP do alvo (pelo ZAP), ou None se não respondeu (caído/DNS/conexão)."""
+        try:
+            sent = self.zap.core.send_request(build_get_request(url), followredirects=True)
+            return response_status(sent)
+        except Exception:  # conexão recusada, DNS, etc.: o alvo não está de pé
+            return None
+
+    def is_target_up(self, url: str) -> bool:
+        """O alvo responde um HTTP abaixo de 500? (sonda única, usada na espera de recuperação)."""
+        status = self.target_status(url)
+        return status is not None and status < 500
+
     def wait_until_ready(self, url: str, attempts: int, delay_s: float) -> int:
         """Confirma (pelo ZAP) que o alvo responde antes de rastrear — evita o 'alvo frio'.
 
@@ -316,17 +329,11 @@ class ZapScanner:
         """
         last: object = "sem resposta"
         for attempt in range(1, attempts + 1):
-            try:
-                sent = self.zap.core.send_request(build_get_request(url), followredirects=True)
-                status = response_status(sent)
-                if status is not None and status < 500:
-                    log.info(
-                        "alvo pronto", extra={"url": url, "status": status, "attempt": attempt}
-                    )
-                    return status
-                last = status if status is not None else "sem resposta"
-            except Exception as exc:  # conexão recusada, DNS, etc.: o alvo ainda não subiu
-                last = type(exc).__name__
+            status = self.target_status(url)
+            if status is not None and status < 500:
+                log.info("alvo pronto", extra={"url": url, "status": status, "attempt": attempt})
+                return status
+            last = status if status is not None else "sem resposta"
             if self.on_progress:
                 self.on_progress("readiness", None, f"aguardando o alvo ({attempt}/{attempts})")
             if attempt < attempts:

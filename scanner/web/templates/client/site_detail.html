@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "partials/macros.html" import scan_pill, sevbar %}
+{% from "partials/macros.html" import scan_pill, sevbar, changes %}
 {% set t = s.target %}
 {% block title %}{{ t.domain }}{% endblock %}
 {% block content %}
@@ -69,7 +69,7 @@
     <div>
       {% if s.comparison %}
       <p class="mb-0">Comparado ao scan anterior</p>
-      <div class="legend mt-2"><span><b>{{ s.comparison.new|length }}</b>{{ "nova" if s.comparison.new|length == 1 else "novas" }}</span><span><b>{{ s.comparison.fixed|length }}</b>{{ "corrigida" if s.comparison.fixed|length == 1 else "corrigidas" }}</span><span><b>{{ s.comparison.persisting|length }}</b>{{ "continua" if s.comparison.persisting|length == 1 else "continuam" }}</span></div>
+      <div class="mt-2">{{ changes(s.comparison, details=false) }}</div>
       {% else %}
       <p class="muted">Este é o primeiro scan concluído. A comparação aparece a partir do próximo.</p>
       {% endif %}
@@ -89,7 +89,7 @@
       {% set r = reports.get(scan.scan_id) %}
       <tr>
         <td>{{ scan.created_at|dt }}</td>
-        <td>{{ scan_pill(scan) }}{% if scan.status_detail and scan.status != "done" %} <span class="faint small">{{ scan.status_detail|phase }}</span>{% endif %}</td>
+        <td>{{ scan_pill(scan) }}{% if scan.status_detail and scan.status != "done" %} <span class="faint small">{{ scan.status_detail|phase if viewer.is_admin else scan.status_detail|public_phase }}</span>{% endif %}</td>
         <td class="num">{{ r.items|length if r else "—" }}</td>
         <td class="num">{{ r.summary.affected_pages if r else "—" }}</td>
         <td class="ta-right"><a href="/scans/{{ scan.scan_id }}">Abrir</a></td>

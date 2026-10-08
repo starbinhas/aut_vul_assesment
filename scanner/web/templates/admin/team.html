@@ -12,7 +12,7 @@
     <td>{{ u.name }}{% if u.user_id == viewer.user_id %} <span class="faint small">(você)</span>{% endif %}</td><td class="mono small">{{ u.email }}</td><td class="muted">{{ u.last_login_at|ago if u.last_login_at else "nunca" }}</td>
     <td>{% if not u.is_active %}<span class="pill">Desativado</span>{% else %}<span class="pill ok">Ativo</span>{% endif %}</td>
     <td class="ta-right">{% if u.user_id != viewer.user_id %}
-      <form method="post" action="/admin/usuarios/{{ u.user_id }}/senha" class="inline"><input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}"><button class="linkish small" type="submit">Nova senha</button></form> ·
+      <form method="post" action="/admin/usuarios/{{ u.user_id }}/senha" class="inline"><input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}"><button class="linkish small" type="submit">Nova senha</button></form>
       <form method="post" action="/admin/usuarios/{{ u.user_id }}/ativo" class="inline"><input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}"><button class="linkish small" type="submit">{{ "Desativar" if u.is_active else "Reativar" }}</button></form>
     {% endif %}</td>
   </tr>

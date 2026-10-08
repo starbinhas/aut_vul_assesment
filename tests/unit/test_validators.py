@@ -1,5 +1,7 @@
 from urllib.parse import parse_qs, urlsplit
 
+import httpx
+
 from scanner.common.models import Outcome, Severity, Status
 from scanner.validation.service import validate_one
 from scanner.validation.validators import (
@@ -118,6 +120,15 @@ def test_validator_crash_is_unconfirmed() -> None:
 
     f = validate_one(make_finding(), FakeClient(boom))
     assert f.status is Status.UNCONFIRMED
+
+
+def test_unreachable_target_says_so() -> None:
+    def refused(url: str):
+        raise httpx.ConnectError("[Errno 111] Connection refused")
+
+    f = validate_one(make_finding(), FakeClient(refused))
+    assert f.status is Status.UNCONFIRMED
+    assert f.validation is not None and "não respondeu" in f.validation.reason
 
 
 def test_confirmed_gets_base_severity() -> None:

@@ -36,8 +36,13 @@ CLIENT_PAGES = [
     ("site-novo", "/sites/novo"),
     ("site", "{site}"),
     ("scan", "{scan}"),
+    ("scan-item", "{scan}"),
+    ("relatorio", "{scan}/relatorio.html"),
     ("conta", "/conta"),
 ]
+# Capturas de um elemento aberto, não da página: o item de falha expandido (com o recibo da
+# prova, se houver algum) é a tela que o cliente mais usa e fica fechado por padrão.
+EXPAND = {"scan-item": ("details.issue:has(.proof)", "details.issue")}
 ADMIN_PAGES = [
     ("admin-operacao", "/admin"),
     ("admin-clientes", "/admin/clientes"),
@@ -113,7 +118,14 @@ def _capture(page: Page, base: str, shot: Shot, out: Path) -> None:
         page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")
     )
     shot.file = f"{shot.name}.{shot.viewport}.png"
-    page.screenshot(path=out / shot.file, full_page=True)
+    for selector in EXPAND.get(shot.name, ()):
+        element = page.locator(selector).first
+        if element.count():
+            element.evaluate("e => { e.open = true; }")
+            element.screenshot(path=out / shot.file)
+            break
+    else:
+        page.screenshot(path=out / shot.file, full_page=True)
     shot.console, shot.failed = console, failed
 
 
@@ -123,7 +135,9 @@ def run(
     out.mkdir(parents=True, exist_ok=True)
     shots: list[Shot] = []
     with sync_playwright() as p:
-        browser: Browser = p.chromium.launch()
+        # Sem isso, o Chromium headless no Linux arredonda a posição de cada letra e o texto
+        # pequeno sai com espaçamento irregular que não existe nos navegadores dos clientes.
+        browser: Browser = p.chromium.launch(args=["--font-render-hinting=none"])
         for vp in viewports:
             w, h = VIEWPORTS[vp]
             ctx = browser.new_context(
@@ -149,13 +163,13 @@ def run(
                 if only and name not in only:
                     continue
                 if path.startswith("{"):
-                    key = path.strip("{}")
+                    key, _, suffix = path[1:].partition("}")
                     if key not in found:
                         found[key] = _discover(nav, base, key)
                     if not found[key]:
                         print(f"pulada: {name} (nenhum link para {key})")
                         continue
-                    path = found[key]
+                    path = found[key] + suffix
                 s = Shot(name, vp, path)
                 page = ctx.new_page()  # aba nova: ouvintes de console não se acumulam
                 _capture(page, base, s, out)

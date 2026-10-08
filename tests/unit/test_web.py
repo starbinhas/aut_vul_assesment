@@ -297,6 +297,16 @@ def test_security_headers(env) -> None:
     assert r.headers["cache-control"] == "no-store"
 
 
+def test_static_assets_are_versioned_and_revalidated(env) -> None:
+    app, _, _ = env
+    c = client_for(app)
+    css = re.search(r'href="(/static/css/app\.css\?v=[0-9a-f]{10})"', c.get("/entrar").text)
+    assert css, "CSS sem versão na URL: o navegador mistura HTML novo com CSS antigo"
+    r = c.get(css.group(1))
+    assert r.status_code == 200
+    assert r.headers["cache-control"] == "no-cache"
+
+
 def test_stored_report_html_is_sandboxed(env) -> None:
     app, _, _ = env
     r = login(app, "ana@loja-a.test").get("/scans/scan-a/relatorio.html")

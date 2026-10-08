@@ -66,6 +66,7 @@ def overview(
         dead_total=sum(q.dead for q in queues),
         recent_audit=db.scalars(select(AuditLog).order_by(AuditLog.at.desc()).limit(8)).all(),
         sites={t.target_id: t for t in db.scalars(select(Target))},
+        users={u.user_id: u for u in db.scalars(select(User))},
     )
 
 
@@ -338,6 +339,7 @@ def audit_log(
         q = q.where(AuditLog.action == action)
     entries = db.scalars(q).all()
     users = {u.user_id: u for u in db.scalars(select(User))}
+    sites = {t.target_id: t for t in db.scalars(select(Target))}
     actions = sorted(db.scalars(select(AuditLog.action).distinct()))
     return render(
         request,
@@ -346,6 +348,7 @@ def audit_log(
         db,
         entries=entries,
         users=users,
+        sites=sites,
         actions=actions,
         action=action,
     )

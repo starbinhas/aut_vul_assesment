@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "partials/macros.html" import sev, status, sevbar, scan_pill, proof %}
+{% from "partials/macros.html" import sev, status, sevbar, scan_pill, proof, changes %}
 {% block title %}Scan {{ scan.created_at|dt }}{% endblock %}
 {% block content %}
 {% set domain = target.domain if target else scan.target_id %}
@@ -51,12 +51,7 @@
     <div>
       <h3>Desde o scan anterior</h3>
       {% if comparison %}
-        <div class="legend mt-4"><span><b>{{ comparison.new|length }}</b>{{ "nova" if comparison.new|length == 1 else "novas" }}</span><span><b>{{ comparison.fixed|length }}</b>{{ "corrigida" if comparison.fixed|length == 1 else "corrigidas" }}</span><span><b>{{ comparison.persisting|length }}</b>{{ "continua" if comparison.persisting|length == 1 else "continuam" }}</span></div>
-        {% if comparison.fixed %}
-        <details class="mt-4"><summary class="small muted">Ver as corrigidas</summary>
-          <ul class="pages mt-2">{% for it in comparison.fixed %}<li><span>{{ it.finding.title }}</span>{{ sev(it.severity.value) }}</li>{% endfor %}</ul>
-        </details>
-        {% endif %}
+        <div class="mt-4">{{ changes(comparison) }}</div>
       {% else %}
         <p class="muted mt-4">Primeiro scan concluído deste site.</p>
       {% endif %}
@@ -71,16 +66,21 @@
     {% for s in severities %}
       <label class="chip"><input type="checkbox" name="sev" value="{{ s.value }}" {% if s.value in filters.sev %}checked{% endif %}><span>{{ s.value|severity }}</span></label>
     {% endfor %}
+    {% if statuses|length > 1 %}
     <span class="sep" aria-hidden="true"></span>
     {% for s in statuses %}
       <label class="chip"><input type="checkbox" name="st" value="{{ s.value }}" {% if s.value in filters.st %}checked{% endif %}><span>{{ s.value|status }}</span></label>
     {% endfor %}
+    {% endif %}
     <span class="spacer"></span>
     <input type="search" name="q" value="{{ filters.q }}" placeholder="Buscar por falha ou página" aria-label="Buscar">
     <noscript><button class="btn small ghost" type="submit">Filtrar</button></noscript>
   </form>
 
   <div id="issues">
+  {% if uniform_status and uniform_status.value == "unconfirmed" %}
+  <p class="small muted mb-4">Nenhuma destas falhas foi provada automaticamente ainda: todas aparecem como não confirmadas. Abra cada uma para ver o motivo.</p>
+  {% endif %}
   {% if not items %}
     <p class="empty">{{ "Nenhuma falha com esses filtros." if (filters.sev or filters.st or filters.q) else "Nenhuma falha encontrada no que foi testado." }}</p>
   {% endif %}
@@ -91,10 +91,10 @@
       <summary>
         <span>{{ sev(it.severity.value) }}</span>
         <span>
-          <span class="title">{{ f.title }}</span>
+          <span class="title">{{ f.title|name }}</span>
           <div class="meta">{{ it.locations|length|plural("página", "páginas") }}{% if it.owasp_name %}, {{ it.owasp_name|lower }} ({{ f.owasp }}){% endif %}</div>
         </span>
-        <span class="right">{% if it.group_key in new_keys %}<span class="pill new">Nova</span>{% endif %}{{ status(it.status.value) }}</span>
+        <span class="right">{% if it.group_key in new_keys %}<span class="pill new">Nova</span>{% endif %}{% if not uniform_status %}{{ status(it.status.value) }}{% endif %}</span>
       </summary>
       <div class="body">
         <div class="explain">
@@ -115,21 +115,26 @@
           {% endfor %}
         </ol>
 
+        {% set verify = it.remediation.how_to_verify|replace("https://SEU-SITE/", target.base_url if target else "https://SEU-SITE/") %}
         <h3>Como verificar</h3>
-        <p class="muted">{{ it.remediation.how_to_verify }}</p>
+        {% if verify is command %}
+        <div class="codeblock"><pre id="verify-{{ iid }}">{{ verify }}</pre><button class="btn small ghost copy" type="button" data-copy="verify-{{ iid }}">Copiar</button></div>
+        {% else %}
+        <p class="muted">{{ verify }}</p>
+        {% endif %}
 
-        <h3 class="mt-6">{{ "Página afetada" if it.locations|length == 1 else "Páginas afetadas" }}</h3>
+        <h3 class="mt-6">{{ it.locations|length|plural("página afetada", "páginas afetadas")|sentence }}</h3>
         <ul class="pages">
-          {% for loc in it.locations[:25] %}
+          {% for loc in it.locations[:5] %}
           <li>
             <span><span class="method">{{ loc.method }}</span>{{ loc.url }}{% if loc.parameter %} <span class="faint">parâmetro {{ loc.parameter }}</span>{% endif %}</span>
             {% if loc.status != it.status %}{{ status(loc.status.value) }}{% endif %}
           </li>
           {% endfor %}
         </ul>
-        {% if it.locations|length > 25 %}
-        <details class="mt-2"><summary class="small muted">Ver as outras {{ it.locations|length - 25 }}</summary>
-          <ul class="pages">{% for loc in it.locations[25:] %}<li><span><span class="method">{{ loc.method }}</span>{{ loc.url }}</span></li>{% endfor %}</ul>
+        {% if it.locations|length > 5 %}
+        <details class="more mt-2"><summary>Ver as outras {{ it.locations|length - 5 }}</summary>
+          <ul class="pages">{% for loc in it.locations[5:] %}<li><span><span class="method">{{ loc.method }}</span>{{ loc.url }}{% if loc.parameter %} <span class="faint">parâmetro {{ loc.parameter }}</span>{% endif %}</span>{% if loc.status != it.status %}{{ status(loc.status.value) }}{% endif %}</li>{% endfor %}</ul>
         </details>
         {% endif %}
 
@@ -175,7 +180,7 @@
   <p class="muted">Apontadas pelas ferramentas, mas uma checagem objetiva (ou a nossa equipe) mostrou que não existem.</p>
   <ul class="list">
     {% for d in report.discarded %}
-    <li><div>{{ d.title }}<div class="faint small">{{ d.reason|sentence }}, {{ d.urls|length|plural("página", "páginas") }}</div></div>
+    <li><div>{{ d.title|name }}<div class="faint small">{{ d.reason|reason }}, {{ d.urls|length|plural("página", "páginas") }}</div></div>
       {% if viewer.is_admin %}
       <form method="post" action="/admin/scans/{{ scan.scan_id }}/revisao" class="inline">
         <input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}">

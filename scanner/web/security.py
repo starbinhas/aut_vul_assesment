@@ -122,8 +122,9 @@ def security_headers(path: str, secure: bool) -> dict[str, str]:
         "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
         "Cross-Origin-Opener-Policy": "same-origin",
     }
-    if not path.startswith("/static/"):
-        headers["Cache-Control"] = "no-store"
+    # Páginas: nunca em cache (dados do cliente). Estáticos: o navegador revalida (ETag) antes
+    # de usar a cópia guardada; CSS/JS ainda levam a versão na URL (`asset`).
+    headers["Cache-Control"] = "no-cache" if path.startswith("/static/") else "no-store"
     if secure:
         headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return headers

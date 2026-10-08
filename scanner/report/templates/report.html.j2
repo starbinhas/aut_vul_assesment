@@ -2,6 +2,7 @@
 <html lang="{{ r.language }}">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Relatório de segurança — {{ r.target_id }}</title>
 <style>
   @page { size: A4; margin: 18mm 15mm; @bottom-right { content: counter(page) "/" counter(pages); font-size: 9pt; color: #64748b; } }
@@ -12,6 +13,12 @@
   .muted { color: #64748b; font-size: 9pt; }
   table.summary { border-collapse: collapse; margin: 8pt 0; }
   table.summary td, table.summary th { border: 1px solid #cbd5e1; padding: 4pt 10pt; text-align: center; }
+  @media screen and (max-width: 480px) {
+    body { margin: 12px; }
+    table.summary { width: 100%; table-layout: fixed; font-size: 8.5pt; }
+    table.summary td, table.summary th { padding: 4pt 2pt; }
+    table.summary th { font-size: 7.5pt; }
+  }
   .item { border: 1px solid #cbd5e1; border-radius: 4pt; padding: 10pt 12pt; margin: 12pt 0; page-break-inside: avoid; }
   .badge { display: inline-block; padding: 1pt 6pt; border-radius: 3pt; font-size: 8.5pt; font-weight: bold; color: #fff; }
   .sev-critical { background: #7f1d1d; } .sev-high { background: #b91c1c; } .sev-medium { background: #c2410c; }
@@ -20,16 +27,27 @@
   pre { background: #f1f5f9; padding: 6pt 8pt; white-space: pre-wrap; word-break: break-all; font-size: 8.5pt; }
   ol li { margin-bottom: 6pt; }
   ul.locs { margin: 0 0 6pt; padding-left: 14pt; font-size: 8.5pt; color: #334155; word-break: break-all; }
+  p, li { overflow-wrap: anywhere; }
+  ul.refs { margin: 0; padding-left: 14pt; }
+  dl.meta { display: grid; grid-template-columns: max-content 1fr; gap: 1pt 10pt; margin: 4pt 0 0; }
+  dl.meta dd { margin: 0; }
 </style>
 </head>
 <body>
 <h1>Relatório de segurança</h1>
-<div class="muted">Alvo {{ r.target_id }} · scan {{ r.scan_id }} · gerado em {{ r.generated_at.strftime("%d/%m/%Y %H:%M UTC") }} · OWASP Top 10:{{ r.owasp_version }}</div>
+<dl class="meta muted">
+  <dt>Site</dt><dd>{{ r.target_id }}</dd>
+  <dt>Scan</dt><dd>{{ r.scan_id }}</dd>
+  <dt>Gerado em</dt><dd>{{ r.generated_at.strftime("%d/%m/%Y %H:%M UTC") }}</dd>
+  <dt>Referência</dt><dd>OWASP Top 10:{{ r.owasp_version }}</dd>
+</dl>
 
 <h2>Resumo</h2>
 <table class="summary">
-  <tr>{% for sev, n in r.summary.by_severity.items() %}<th>{{ sev|severity_pt }}</th>{% endfor %}</tr>
-  <tr>{% for sev, n in r.summary.by_severity.items() %}<td>{{ n }}</td>{% endfor %}</tr>
+  {# Ordem fixa: o Postgres (JSONB) não preserva a ordem das chaves. #}
+  {% set order = ["critical", "high", "medium", "low", "info"] %}
+  <tr>{% for sev in order %}<th>{{ sev|severity_pt }}</th>{% endfor %}</tr>
+  <tr>{% for sev in order %}<td>{{ r.summary.by_severity.get(sev, 0) }}</td>{% endfor %}</tr>
 </table>
 <p>
   {{ r.summary.total_reported }} falhas em {{ r.summary.affected_pages }} páginas:
@@ -44,16 +62,16 @@
 {% for it in r.items %}
 {% set f = it.finding %}
 <div class="item">
-  <h3>{{ loop.index }}. {{ f.title }}</h3>
+  <h3>{{ loop.index }}. {{ f.title|name }}</h3>
   <span class="badge sev-{{ it.severity }}">{{ it.severity|severity_pt }}</span>
   <span class="badge st">{{ it.status|status_pt }}</span>
   {% if f.owasp %}<span class="muted">{{ f.owasp }}{% if it.owasp_name %} — {{ it.owasp_name }}{% endif %}</span>{% endif %}
-  {% if f.cwe %}<span class="muted"> · CWE-{{ f.cwe }}</span>{% endif %}
+  {%- if f.cwe %}<span class="muted">, CWE-{{ f.cwe }}</span>{% endif %}
   {% set n = it.locations|length %}
   <p class="muted">{% if n == 1 %}Afeta 1 página{% else %}Afeta {{ n }} páginas{% endif %}:</p>
   <ul class="locs">
   {% for loc in it.locations[:8] %}
-    <li>{{ loc.method }} {{ loc.url }}{% if loc.parameter %} · parâmetro <code>{{ loc.parameter }}</code>{% endif %}{% if loc.status != it.status %} <span class="muted">({{ loc.status|status_pt|lower }})</span>{% endif %}</li>
+    <li>{{ loc.method }} {{ loc.url }}{% if loc.parameter %}, parâmetro <code>{{ loc.parameter }}</code>{% endif %}{% if loc.status != it.status %} <span class="muted">({{ loc.status|status_pt|lower }})</span>{% endif %}</li>
   {% endfor %}
   {% if n > 8 %}<li class="muted">e mais {{ n - 8 }} páginas (lista completa na área do cliente)</li>{% endif %}
   </ul>
@@ -67,10 +85,15 @@
       {% if step.snippet %}<pre>{{ step.snippet }}</pre>{% endif %}</li>
   {% endfor %}
   </ol>
+  {% if it.remediation.how_to_verify is command %}
+  <p><strong>Como verificar.</strong></p>
+  <pre>{{ it.remediation.how_to_verify }}</pre>
+  {% else %}
   <p><strong>Como verificar.</strong> {{ it.remediation.how_to_verify }}</p>
+  {% endif %}
 
   {% if f.validation %}
-  <p class="muted"><strong>Validação:</strong> {{ f.validation.reason }}</p>
+  <p class="muted"><strong>Validação:</strong> {{ f.validation.reason|reason }}</p>
   {% if f.validation.proof and f.validation.proof.response and f.validation.proof.response.body_excerpt %}
   <pre>{{ f.validation.proof.request.method }} {{ f.validation.proof.request.url }}
 HTTP {{ f.validation.proof.response.status }}
@@ -79,7 +102,8 @@ HTTP {{ f.validation.proof.response.status }}
   {% endif %}
   {% endif %}
   {% if it.remediation.references %}
-  <p class="muted">Referências: {% for ref in it.remediation.references %}{{ ref }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
+  <p class="muted">Para saber mais:</p>
+  <ul class="refs muted">{% for ref in it.remediation.references %}<li>{{ ref }}</li>{% endfor %}</ul>
   {% endif %}
 </div>
 {% else %}
@@ -90,7 +114,7 @@ HTTP {{ f.validation.proof.response.status }}
 <h2>Descartadas por verificação</h2>
 <p class="muted">Apontadas pelas ferramentas e descartadas por checagem determinística.</p>
 <ul>
-{% for d in r.discarded %}<li>{{ d.title }} — {{ d.urls|length }} página(s) <span class="muted">({{ d.reason }})</span></li>{% endfor %}
+{% for d in r.discarded %}<li>{{ d.title|name }} — {{ d.urls|length }} {{ "página" if d.urls|length == 1 else "páginas" }} <span class="muted">({{ d.reason|reason }})</span></li>{% endfor %}
 </ul>
 {% endif %}
 </body>

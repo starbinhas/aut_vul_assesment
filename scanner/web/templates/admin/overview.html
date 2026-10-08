@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "partials/macros.html" import scan_pill %}
+{% from "partials/macros.html" import scan_pill, audit_object %}
 {% block title %}Operação{% endblock %}
 {% block content %}
 <div class="page-head">
@@ -38,7 +38,8 @@
   <div class="section-head"><h2>Últimas ações</h2><a class="small" href="/admin/auditoria">Auditoria completa</a></div>
   <ul class="list">
     {% for e in recent_audit %}
-    <li><div>{{ e.action|audit }} <span class="faint small">{{ e.object_id or "" }}</span></div><span class="faint small">{{ e.at|ago }}</span></li>
+    {% set who = users.get(e.user_id) %}
+    <li><div>{% if who %}{{ who.name }} <span class="muted">{{ e.action|audit|lower }}</span>{% else %}{{ e.action|audit }}{% endif %} <span class="faint small">{{ audit_object(e, users, sites) }}</span></div><span class="faint small">{{ e.at|ago }}</span></li>
     {% else %}<li class="faint">Nada registrado.</li>{% endfor %}
   </ul>
 </section>

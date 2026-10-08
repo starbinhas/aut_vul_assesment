@@ -5,6 +5,7 @@ Para o cliente, "cabeçalho X ausente" em 120 páginas é uma correção só, n�
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
@@ -20,9 +21,28 @@ STATUS_STRENGTH = {
 }
 
 
+# Variante no fim do título que não muda a correção: "Insecure HTTP Method - PUT", "- COPY"...
+_METHOD_SUFFIX = re.compile(
+    r"\s+-\s+(get|head|post|put|patch|delete|options|trace|connect|copy|lock|unlock|mkcol|move"
+    r"|propfind|proppatch)$",
+    re.IGNORECASE,
+)
+
+
+def title_family(title: str) -> str:
+    """Título sem a variante: a mesma falha com vários métodos HTTP vira um item só."""
+    return _METHOD_SUFFIX.sub("", title.strip()).lower()
+
+
 def group_key(f: Finding) -> str:
     kind = f"cwe:{f.cwe}" if f.cwe else f"{f.source.tool}:{f.source.rule_id}"
-    return f"{kind}|{f.title.strip().lower()}"
+    return f"{kind}|{title_family(f.title)}"
+
+
+def normalize_key(key: str) -> str:
+    """Chave de relatórios antigos (antes de `title_family`) no formato atual, para comparar."""
+    kind, _, title = key.partition("|")
+    return f"{kind}|{title_family(title)}"
 
 
 @dataclass

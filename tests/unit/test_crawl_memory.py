@@ -126,3 +126,43 @@ def test_recrawl_on_regression_vs_previous() -> None:
 def test_no_recrawl_when_near_previous() -> None:
     # 600 de 800 (75% >= 70%): aceitável, não refaz.
     assert should_recrawl(600, min_pages=15, previous=800, regression_ratio=0.7) is False
+
+
+# --- entrega parcial / sinal de parada (alvo instável) -----------------------------------
+
+from scanner.common.db import (  # noqa: E402
+    is_stop_requested,
+    mark_partial,
+    request_stop,
+)
+
+
+def _add_bare_scan(sessions, scan_id="s1", target_id="t1"):
+    with sessions.begin() as s:
+        s.add(Scan(scan_id=scan_id, target_id=target_id, scope={}))
+
+
+def test_stop_request_round_trips(sessions) -> None:
+    _add_bare_scan(sessions)
+    assert is_stop_requested(sessions, "s1") is False
+    request_stop(sessions, "s1")
+    assert is_stop_requested(sessions, "s1") is True
+
+
+def test_request_stop_is_idempotent_keeps_first_time(sessions) -> None:
+    _add_bare_scan(sessions)
+    request_stop(sessions, "s1")
+    with sessions() as s:
+        first = s.get(Scan, "s1").stop_requested_at
+    request_stop(sessions, "s1")  # segunda vez não sobrescreve
+    with sessions() as s:
+        assert s.get(Scan, "s1").stop_requested_at == first
+
+
+def test_mark_partial_sets_flag_and_reason(sessions) -> None:
+    _add_bare_scan(sessions)
+    mark_partial(sessions, "s1", "target-unstable")
+    with sessions() as s:
+        scan = s.get(Scan, "s1")
+        assert scan.partial is True
+        assert scan.partial_reason == "target-unstable"

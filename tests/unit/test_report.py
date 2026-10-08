@@ -51,6 +51,19 @@ def test_html_escapes_payloads() -> None:
     assert "&lt;script&gt;" in html
 
 
+def test_html_summary_keeps_severity_order_and_client_names() -> None:
+    f = make_finding(status=Status.CONFIRMED, title="SQL Injection", cwe=89, rule_id="40018")
+    report = build_report("scan-1", "target-1", [f], lambda f: (static_remediation(f), "catalog"))
+    # como volta do Postgres (JSONB): chaves em ordem qualquer
+    shuffled = dict(reversed(list(report.summary.by_severity.items())))
+    report = report.model_copy(
+        update={"summary": report.summary.model_copy(update={"by_severity": shuffled})}
+    )
+    html = render_html(report)
+    assert html.index("Crítica") < html.index("Alta") < html.index("Informativa")
+    assert "Injeção de SQL" in html
+
+
 def test_llm_prompt_has_no_client_data() -> None:
     f = make_finding(url="http://juice-shop:3000/conta?token=SEGREDO", param="token")
     prompt = build_user_prompt(RemediationRequest(f, "nginx", "pt-BR"))

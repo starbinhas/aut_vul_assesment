@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from functools import cache
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -14,11 +16,23 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from scanner.common.db import User
+from scanner.report.names import display_title
 from scanner.web import labels
 from scanner.web.security import CSRF_FIELD, CSRF_HEADER, csrf_token
 from scanner.web.tenancy import Viewer, not_found, org_name
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+STATIC = Path(__file__).parent / "static"
+
+
+@cache
+def asset(path: str) -> str:
+    """URL de um arquivo estático com a versão do conteúdo: CSS/JS novo = URL nova. Sem isso o
+    navegador mistura HTML novo com CSS antigo do cache (ex.: rótulo curto e longo juntos)."""
+    digest = hashlib.sha256((STATIC / path).read_bytes()).hexdigest()[:10]
+    return f"/static/{path}?v={digest}"
+
+
 TZ = ZoneInfo("America/Sao_Paulo")
 
 
@@ -109,14 +123,19 @@ TEMPLATES.env.filters.update(
     severity=labels.severity,
     status=labels.status,
     phase=labels.phase,
+    public_phase=labels.public_phase,
     scan_status=labels.scan_status,
     dt=fmt_dt,
     ago=fmt_ago,
     plural=labels.plural,
     audit=labels.audit_action,
     sentence=labels.sentence,
+    reason=labels.reason,
+    name=display_title,
 )
 TEMPLATES.env.globals["scan_eta"] = scan_eta
+TEMPLATES.env.globals["asset"] = asset
+TEMPLATES.env.tests["command"] = labels.is_command
 
 
 def render(

@@ -17,8 +17,8 @@
   {% set eta = scan_eta(scan) %}
   <div class="progress-now">
     <div class="row between">
-      <span>{{ scan.status_detail|phase if scan.status_detail else scan.status|scan_status }}</span>
-      <span class="faint small" aria-live="polite">{% if pct is not none %}{{ pct }}%{% if eta %} · faltam {{ eta }}{% endif %}{% endif %}</span>
+      <span>{{ (scan.status_detail|phase if viewer.is_admin else scan.status_detail|public_phase) or scan.status|scan_status }}</span>
+      <span class="faint small" aria-live="polite">{% if pct is not none %}{{ pct }}%{% if eta %}, faltam {{ eta }}{% endif %}{% endif %}</span>
     </div>
     {% if pct is not none %}
     <meter class="bar" min="0" max="100" value="{{ pct }}" aria-label="Progresso da fase"></meter>

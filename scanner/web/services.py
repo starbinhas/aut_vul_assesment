@@ -9,6 +9,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlsplit
 
 from pydantic import ValidationError
 from sqlalchemy import event, func, select
@@ -23,6 +24,7 @@ from scanner.common.db import (
     Target,
     set_scan_status,
 )
+from scanner.common.grouping import normalize_key
 from scanner.common.models import Finding, Outcome, Scope, StageMessage, Status, Validation
 from scanner.common.queue import (
     DEAD_LETTER_SUFFIX,
@@ -195,25 +197,70 @@ def previous_done_scan(session: Session, scan: Scan) -> Scan | None:
 
 @dataclass
 class Comparison:
+    """O que mudou desde o scan anterior. Ausência não é prova de correção: só dizemos "não
+    apareceu mais" quando a página da falha voltou a ser testada; senão, "não testada desta vez"."""
+
     new: list[ReportItem] = field(default_factory=list)
-    fixed: list[ReportItem] = field(default_factory=list)
+    gone: list[ReportItem] = field(default_factory=list)
+    not_retested: list[ReportItem] = field(default_factory=list)
     persisting: list[ReportItem] = field(default_factory=list)
+    pages_now: int | None = None
+    pages_before: int | None = None
 
     @property
     def has_previous(self) -> bool:
-        return bool(self.new or self.fixed or self.persisting)
+        return bool(self.new or self.gone or self.not_retested or self.persisting)
+
+    @property
+    def coverage_dropped(self) -> bool:
+        """Este scan percorreu bem menos páginas que o anterior: o que sumiu pode só não ter
+        sido testado."""
+        if not self.pages_now or not self.pages_before:
+            return False
+        return self.pages_now < self.pages_before * COVERAGE_DROP_RATIO
 
 
-def compare(current: ReportModel, previous: ReportModel | None) -> Comparison | None:
+# Abaixo de 80% das páginas do scan anterior, avisamos que a comparação é parcial.
+COVERAGE_DROP_RATIO = 0.8
+
+
+def _page(url: str) -> tuple[str, str]:
+    parts = urlsplit(url)
+    return parts.netloc.lower(), parts.path.rstrip("/") or "/"
+
+
+def _pages_in(report: ReportModel) -> set[tuple[str, str]]:
+    """Páginas que o scan comprovadamente alcançou (aparecem em algum achado ou descarte)."""
+    pages = {_page(loc.url) for item in report.items for loc in item.locations}
+    return pages | {_page(url) for d in report.discarded for url in d.urls}
+
+
+def compare(
+    current: ReportModel,
+    previous: ReportModel | None,
+    pages_now: int | None = None,
+    pages_before: int | None = None,
+) -> Comparison | None:
     """O que mudou desde o scan anterior do mesmo site (por falha, não por página)."""
     if previous is None:
         return None
-    before = {i.group_key: i for i in previous.items}
-    now = {i.group_key: i for i in current.items}
+    before = {normalize_key(i.group_key): i for i in previous.items}
+    now = {normalize_key(i.group_key): i for i in current.items}
+    reached = _pages_in(current)
+    gone: list[ReportItem] = []
+    not_retested: list[ReportItem] = []
+    for key, item in before.items():
+        if key in now:
+            continue
+        retested = any(_page(loc.url) in reached for loc in item.locations)
+        (gone if retested else not_retested).append(item)
     return Comparison(
         new=[i for k, i in now.items() if k not in before],
-        fixed=[i for k, i in before.items() if k not in now],
+        gone=gone,
+        not_retested=not_retested,
         persisting=[i for k, i in now.items() if k in before],
+        pages_now=pages_now,
+        pages_before=pages_before,
     )
 
 

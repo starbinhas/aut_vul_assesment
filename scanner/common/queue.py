@@ -109,9 +109,7 @@ def consume(
             continue
         for _stream, entries in resp or []:
             for entry_id, fields in entries:
-                _handle_entry(
-                    r, sessions, stream, group, entry_id, fields, handler, on_give_up
-                )
+                _handle_entry(r, sessions, stream, group, entry_id, fields, handler, on_give_up)
 
 
 def _retry_pending(

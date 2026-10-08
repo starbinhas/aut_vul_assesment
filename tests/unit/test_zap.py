@@ -251,3 +251,47 @@ def test_wait_until_ready_raises_when_never_up() -> None:
     with pytest.raises(TargetNotReadyError):
         z.wait_until_ready("http://t/", attempts=3, delay_s=0)
     assert z.zap.core.calls == 3
+
+
+# --- espera de recuperação do alvo (instabilidade no meio do scan) ------------------------
+
+from scanner.web_scan.service import (  # noqa: E402
+    GAVE_UP,
+    RECOVERED,
+    STOPPED,
+    wait_for_target_recovery,
+)
+
+
+class FakeZapUp:
+    """is_target_up devolve, em sequência, cada valor de `ups` (depois, sempre False)."""
+
+    def __init__(self, ups: list[bool]) -> None:
+        self.ups = list(ups)
+        self.on_progress = None
+        self.probes = 0
+
+    def is_target_up(self, url: str) -> bool:
+        self.probes += 1
+        return self.ups.pop(0) if self.ups else False
+
+
+def test_recovery_returns_recovered_when_up() -> None:
+    z = FakeZapUp([True])
+    assert wait_for_target_recovery(z, ["http://t/"], 0, 60, lambda: False) == RECOVERED
+
+
+def test_recovery_waits_then_recovers() -> None:
+    z = FakeZapUp([False, False, True])
+    assert wait_for_target_recovery(z, ["http://t/"], 0, 60, lambda: False) == RECOVERED
+    assert z.probes == 3
+
+
+def test_recovery_stopped_by_operator() -> None:
+    z = FakeZapUp([False])  # segue caído
+    assert wait_for_target_recovery(z, ["http://t/"], 0, 60, lambda: True) == STOPPED
+
+
+def test_recovery_gives_up_after_max_wait() -> None:
+    z = FakeZapUp([False])  # caído; max_wait=0 -> desiste na hora
+    assert wait_for_target_recovery(z, ["http://t/"], 0, 0, lambda: False) == GAVE_UP
