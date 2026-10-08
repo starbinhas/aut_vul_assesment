@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -114,6 +115,10 @@ def run_scan(
         zap.set_credential(credential)
 
     timed_out = False
+    crawled: list[str] = []
+    retries = 0
+    crawl_seconds = active_seconds = 0.0
+    crawl_start = time.monotonic()
     try:
         zap.seed_routes(scope_routes, guard)
         for base in msg.scope.base_urls:
@@ -133,7 +138,6 @@ def run_scan(
         crawled = measure()
         # Re-rastreio quando a cobertura sai rasa/regride: refaz o AJAX spider (a parte variável)
         # e remede. Limitado (recrawl_max_retries) para não arrastar o scan.
-        retries = 0
         while (
             recrawl_decider is not None
             and retries < recrawl_max_retries
@@ -151,12 +155,32 @@ def run_scan(
             crawled = measure()
         if on_crawl_done is not None:
             on_crawl_done(crawled)
+        crawl_seconds = time.monotonic() - crawl_start
+        active_start = time.monotonic()
         for base in msg.scope.base_urls:
             zap.active_scan(base, context_id)
+        active_seconds = time.monotonic() - active_start
     except ScanTimeoutError as exc:
         # Entrega o que já foi achado; o tempo máximo é um limite de segurança, não um erro.
         log.warning("scan interrompido pelo tempo máximo", extra={"error": str(exc)})
         timed_out = True
+        # Atribui o tempo decorrido à fase em que parou (para a medição refletir onde demorou).
+        if crawl_seconds == 0.0:
+            crawl_seconds = time.monotonic() - crawl_start
+        else:
+            active_seconds = time.monotonic() - crawl_start - crawl_seconds
+
+    # Medição permanente: onde o tempo foi (rastreio vs. ativo). O ativo costuma dominar.
+    log.info(
+        "tempos do scan",
+        extra={
+            "crawl_seconds": round(crawl_seconds, 1),
+            "active_seconds": round(active_seconds, 1),
+            "pages_crawled": len(crawled),
+            "recrawl_retries": retries,
+            "timed_out": timed_out,
+        },
+    )
 
     findings: dict[str, Finding] = {}
     for base in msg.scope.base_urls:

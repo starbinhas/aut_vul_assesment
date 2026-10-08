@@ -107,6 +107,8 @@ agendador) e a interface web (cliente e admin). O contrato entre etapas continua
   "·", numeração 01/02 fora de sequências reais, sombras e brilhos em tudo, textos vagos
   ("potencialize sua segurança"). Cor só com função: severidade, estado, ação.
 - Telas novas: usar o plugin `frontend-design` e conferir com captura de tela antes de entregar.
+  Método (brief, ciclo de captura, roteiro de crítica): skill `.claude/skills/pitchy-ui/`;
+  capturas com `tests/ui_shots.py`.
 - Textos curtos, concretos, em pt-BR, na voz da Pitchy ("3 falhas novas desde o último scan").
 - Primeiro o que importa: o que mudou → o que corrigir agora → histórico. A mesma falha em várias
   páginas aparece **uma vez**, com "afeta N páginas".
@@ -216,6 +218,9 @@ docker compose -f docker-compose.yml -f docker-compose.lab.yml up -d   # + alvos
 docker compose -f docker-compose.yml -f docker-compose.lab.yml --profile test run --rm tests  # integração
 
 uv run alembic revision -m "descricao"                   # nova migração (em migrations/versions/)
+
+uv run playwright install chromium                       # uma vez (WSL: sudo apt install libnss3 libnspr4 libasound2t64)
+UI_SHOTS_EMAIL=... UI_SHOTS_PASSWORD=... uv run python -m tests.ui_shots   # capturas em out/ui-shots/
 ```
 
 ## Ambiente local

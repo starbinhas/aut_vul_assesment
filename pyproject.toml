@@ -28,6 +28,7 @@ dependencies = [
 dev = [
     "httpx>=0.28.1",
     "mypy>=1.14",
+    "playwright>=1.63.0",
     "pytest>=8.3",
     "respx>=0.22",
     "ruff>=0.9",
