@@ -525,3 +525,74 @@ body { isolation: isolate; }
   .trend .line { stroke-dashoffset: 0; }
   .issue::before { transition: none; }
 }
+
+/* --- escolha do nível do scan (cards) ----------------------------------------------- */
+/* Módulos de um painel de controle: cada nível mostra o que testa, o que nunca faz e o que pode
+   acontecer. O escolhido acende com a luz da marca; o agressivo acende em vermelho. */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.profile-intro { max-width: 72ch; margin: 0 0 var(--s-5); }
+.profiles { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--s-4); align-items: stretch; }
+.profile {
+  --on: var(--live);
+  position: relative; display: flex; flex-direction: column; gap: var(--s-3);
+  margin: 0; padding: var(--s-5); cursor: pointer;
+  border: 1px solid var(--line); border-radius: 14px; background: var(--surface);
+  color: var(--ink); font-size: 14px;
+  transition: border-color .2s ease, background-color .2s ease, transform .2s ease;
+}
+.profile.danger { --on: var(--sev-critical); }
+.profile:hover { border-color: var(--line-strong); }
+.profile input { position: absolute; opacity: 0; pointer-events: none; }
+.profile:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+/* aceso: borda e luz no topo na cor do nível */
+.profile::before {
+  content: ""; position: absolute; inset: -1px -1px auto -1px; height: 120px; pointer-events: none;
+  border-radius: 14px 14px 0 0; opacity: 0; transition: opacity .25s ease;
+  background: radial-gradient(70% 100% at 50% 0, color-mix(in srgb, var(--on) 22%, transparent), transparent 75%);
+}
+.profile::after {
+  content: ""; position: absolute; left: 18%; right: 18%; top: -1px; height: 1px; opacity: 0;
+  background: linear-gradient(90deg, transparent, var(--on), transparent); transition: opacity .25s ease;
+}
+.profile:has(input:checked) { border-color: color-mix(in srgb, var(--on) 55%, var(--line)); background: color-mix(in srgb, var(--on) 4%, var(--surface)); }
+.profile:has(input:checked)::before, .profile:has(input:checked)::after { opacity: 1; }
+
+.profile-top { display: flex; align-items: center; gap: var(--s-3); min-height: 24px; }
+.profile-tag { font-size: 12px; padding: 2px 9px; border-radius: var(--r-pill); border: 1px solid var(--line-strong); color: var(--ink-soft); }
+.profile.danger .profile-tag { border-color: color-mix(in srgb, var(--sev-critical) 50%, transparent); color: var(--sev-critical); }
+.profile .radio { margin-left: auto; width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--line-strong); display: grid; place-items: center; transition: border-color .2s ease; }
+.profile .radio::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--on); transform: scale(0); transition: transform .2s cubic-bezier(.3, 1.5, .5, 1); }
+.profile:has(input:checked) .radio { border-color: var(--on); }
+.profile:has(input:checked) .radio::after { transform: scale(1); }
+
+/* medidor de intensidade: 1, 2 ou 3 barras acesas */
+.meter { display: inline-flex; align-items: flex-end; gap: 3px; height: 16px; }
+.meter i { display: block; width: 5px; border-radius: 1px; background: var(--line-strong); }
+.meter i:nth-child(1) { height: 6px; } .meter i:nth-child(2) { height: 11px; } .meter i:nth-child(3) { height: 16px; }
+.lvl-1 .meter i:nth-child(-n+1), .lvl-2 .meter i:nth-child(-n+2), .lvl-3 .meter i:nth-child(-n+3) { background: var(--on); }
+
+.profile-name { display: block; font-size: 22px; font-weight: 400; letter-spacing: -0.01em; line-height: 1.15; }
+.profile-pitch { display: block; color: var(--ink-soft); margin-top: -6px; }
+.profile-block { display: block; color: var(--ink-soft); line-height: 1.5; padding-top: var(--s-3); border-top: 1px solid var(--line); }
+.profile-block b { display: block; color: var(--ink); font-weight: 500; font-size: 13px; margin-bottom: 2px; }
+.profile-block.watch b { color: var(--warn); }
+.profile.danger .profile-block.watch b { color: var(--sev-critical); }
+.profile-block.watch .w { display: block; }
+.profile-block.watch .w + .w { margin-top: 6px; }
+.profile-facts { display: flex; flex-wrap: wrap; gap: 4px var(--s-4); margin-top: auto; padding-top: var(--s-3); border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-soft); }
+.profile-facts b { color: var(--ink); font-weight: 500; font-variant-numeric: tabular-nums; }
+
+/* o botão diz o que vai acontecer: o rótulo acompanha o nível escolhido (sem JS) */
+.profile-submit { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-4); margin-top: var(--s-5); }
+.profile-form .when { display: none; }
+.profile-form:has(input[value="safe"]:checked) .when-safe,
+.profile-form:has(input[value="balanced"]:checked) .when-balanced,
+.profile-form:has(input[value="aggressive"]:checked) .when-aggressive { display: inline; }
+.profile-form:has(input[value="aggressive"]:checked) .btn.primary { background: var(--sev-critical); color: var(--accent-ink); }
+/* no celular, só o nível escolhido mostra o detalhe; os outros ficam no resumo */
+@media (max-width: 560px) {
+  .profile { padding: var(--s-4); }
+  .profile:not(:has(input:checked)) :is(.profile-block, .profile-facts) { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .profile, .profile::before, .profile::after, .profile .radio::after { transition: none; } }

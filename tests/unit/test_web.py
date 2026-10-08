@@ -375,6 +375,17 @@ def test_aggressive_is_offered_only_to_admin_on_lab_site(env) -> None:
     assert 'value="balanced"' in client_html and 'value="aggressive"' not in client_html
 
 
+def test_profile_cards_explain_risks_and_real_limits(env) -> None:
+    app, _, _ = env
+    html = login(app, "ana@loja-a.test").get("/sites/t-a").text
+    settings = app.state.settings
+    # limites do site de cliente, não os de laboratório
+    assert f"no máximo {settings.scan_max_requests_per_second} requisições" in html
+    assert "O que nunca faz" in html and "Atenção" in html
+    assert "um formulário de contato pode disparar e-mails" in html  # risco real em todo nível
+    assert "Só laboratório" not in html
+
+
 def test_admin_starts_aggressive_on_lab_site(env) -> None:
     app, sessions, published = env
     add_lab_site(sessions)

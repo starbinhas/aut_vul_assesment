@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from scanner.report import names
 
 SEVERITY = {
@@ -131,3 +133,49 @@ def sentence(value: object) -> str:
 
 def plural(n: int, one: str, many: str) -> str:
     return f"{n} {one if n == 1 else many}"
+
+
+# O que cada perfil de scan faz, para o cliente decidir. Fatos de `web_scan/policy.py` (regras) e
+# `web_scan/zap.py` (limites); manter em sincronia ao mudar um perfil.
+PROFILE_INFO: dict[str, dict[str, Any]] = {
+    "safe": {
+        "level": 1,
+        "pitch": "Para rodar em produção, a qualquer hora.",
+        "tag": "Recomendado",
+        "tests": "Injeção de SQL e de comandos, XSS refletido, arquivos expostos (.env, backup, "
+        "pastas ocultas), XXE e leitura de arquivos fora da pasta do site.",
+        "never": "Não grava nem apaga dados, não faz testes por tempo de resposta e não "
+        "sobrecarrega o site.",
+        "watch": [
+            "Formulários recebem valores de teste: um formulário de contato pode disparar e-mails.",
+        ],
+        "button": "Iniciar scan seguro",
+    },
+    "balanced": {
+        "level": 2,
+        "pitch": "Mais fundo, ainda sem mexer em dados.",
+        "tag": None,
+        "tests": "Tudo do seguro, mais injeção de SQL medida pelo tempo de resposta (MySQL, "
+        "PostgreSQL, Oracle, SQLite) e XSS que acontece no navegador (DOM).",
+        "never": "Não grava nem apaga dados.",
+        "watch": [
+            "Os testes por tempo fazem o banco esperar alguns segundos a cada tentativa: o site "
+            "pode ficar mais lento durante o scan. Prefira um horário de pouco movimento.",
+            "Formulários recebem valores de teste: um formulário de contato pode disparar e-mails.",
+        ],
+        "button": "Iniciar scan completo",
+    },
+    "aggressive": {
+        "level": 3,
+        "pitch": "Tudo o que o scanner sabe fazer. Só em alvo de teste.",
+        "tag": "Só laboratório",
+        "tests": "Todos os testes, inclusive os que gravam dados, os que fazem o site acessar "
+        "endereços externos (SSRF, inclusão remota) e os que simulam sobrecarga.",
+        "never": None,
+        "watch": [
+            "Pode apagar ou alterar dados e derrubar o site.",
+            "Bloqueado para qualquer site que não seja de laboratório, mesmo que alguém peça.",
+        ],
+        "button": "Iniciar scan agressivo",
+    },
+}

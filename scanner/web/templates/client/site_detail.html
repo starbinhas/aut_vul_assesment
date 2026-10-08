@@ -13,13 +13,7 @@
     {% if running %}
       <a class="btn ghost" href="/scans/{{ running.scan_id }}">Acompanhar o scan em andamento</a>
     {% else %}
-      <form method="post" action="/sites/{{ t.target_id }}/scans" class="row">
-        <input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}">
-        <select name="profile" aria-label="Nível do scan">
-          {% for p in profiles %}<option value="{{ p.name }}">{{ p.label }}</option>{% endfor %}
-        </select>
-        <button class="btn primary" type="submit">Iniciar scan</button>
-      </form>
+      <a class="btn primary" href="#novo-scan">Novo scan</a>
     {% endif %}
   {% endif %}
 </div>
@@ -75,6 +69,45 @@
       {% endif %}
     </div>
   </div>
+</section>
+{% endif %}
+
+{% if t.verified_at and not running and profiles %}
+<section class="section" id="novo-scan">
+  <div class="section-head">
+    <h2>Novo scan</h2>
+  </div>
+  <p class="muted profile-intro">Escolha o quanto o scanner pode forçar o site. Em qualquer nível ele só testa o domínio comprovado, não sai do escopo, faz no máximo {{ limits.rps }} requisições por segundo e para em {{ limits.minutes }} minutos.</p>
+  <form method="post" action="/sites/{{ t.target_id }}/scans" class="profile-form">
+    <input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}">
+    <fieldset class="profiles">
+      <legend class="sr-only">Nível do scan</legend>
+      {% for p in profiles %}
+      {% set info = profile_info.get(p.name, {}) %}
+      <label class="profile lvl-{{ info.level or 1 }}{{ ' danger' if p.destructive }}">
+        <input type="radio" name="profile" value="{{ p.name }}" {% if loop.first %}checked{% endif %}>
+        <span class="profile-top">
+          <span class="meter" aria-hidden="true"><i></i><i></i><i></i></span>
+          {% if info.tag %}<span class="profile-tag">{{ info.tag }}</span>{% endif %}
+          <span class="radio" aria-hidden="true"></span>
+        </span>
+        <span class="profile-name">{{ p.label|replace(" (laboratório)", "") }}</span>
+        <span class="profile-pitch">{{ info.pitch or p.summary }}</span>
+        <span class="profile-block"><b>O que testa</b>{{ info.tests }}</span>
+        {% if info.never %}<span class="profile-block never"><b>O que nunca faz</b>{{ info.never }}</span>{% endif %}
+        {% if info.watch %}<span class="profile-block watch"><b>Atenção</b>{% for w in info.watch %}<span class="w">{{ w }}</span>{% endfor %}</span>{% endif %}
+        <span class="profile-facts">
+          <span><b>{{ p.rules|length if p.rules else "Todos os" }}</b> testes ativos</span>
+          <span>Força de ataque <b>{{ {"LOW": "baixa", "MEDIUM": "média", "HIGH": "alta", "INSANE": "máxima"}.get(p.attack_strength, p.attack_strength) }}</b></span>
+        </span>
+      </label>
+      {% endfor %}
+    </fieldset>
+    <div class="profile-submit">
+      <button class="btn primary" type="submit">{% for p in profiles %}<span class="when when-{{ p.name }}">{{ profile_info.get(p.name, {}).button or "Iniciar scan" }}</span>{% endfor %}</button>
+      <span class="faint small">Leva até {{ limits.minutes }} minutos. Pode fechar a página: o resultado aparece aqui.</span>
+    </div>
+  </form>
 </section>
 {% endif %}
 

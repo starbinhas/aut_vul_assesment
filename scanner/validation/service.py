@@ -99,6 +99,14 @@ def handle(
     ]
     new, updated = dedup.deduplicate(candidates, existing)
 
+    # Achados próprios já confirmados pela etapa 4 (A07/A08): entram por upsert direto, sem passar
+    # pela re-validação (que rebaixaria um achado sem validador correspondente).
+    forwarded = [
+        Finding.model_validate(d)
+        for d in msg.payload.get("proactive", [])
+        if d.get("scan_id") == msg.scan_id
+    ]
+
     client = ProbeClient(ScopeGuard(scope), max_rps=settings.scan_max_requests_per_second)
     try:
         validated = [validate_one(f, client) for f in new]
@@ -112,7 +120,7 @@ def handle(
     finally:
         client.close()
 
-    for f in [*validated, *proactive, *updated]:
+    for f in [*validated, *proactive, *forwarded, *updated]:
         _upsert(session, f)
     session.execute(
         insert(StageProgress).values(scan_id=msg.scan_id, tool=tool).on_conflict_do_nothing()
@@ -125,7 +133,7 @@ def handle(
         extra={
             "tool": tool,
             "new": len(validated),
-            "proactive": len(proactive),
+            "proactive": len(proactive) + len(forwarded),
             "merged": len(updated),
             "tools_done": tools_done,
         },

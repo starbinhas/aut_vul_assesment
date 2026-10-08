@@ -11,8 +11,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from scanner.common.config import Settings
 from scanner.common.db import Organization, Report, Scan, ScanStatus, StageProgress, Target
 from scanner.common.models import Severity, Status
+from scanner.common.scope import scope_for
 from scanner.report.models import Report as ReportModel
 from scanner.report.models import ReportItem
 from scanner.report.names import display_title
@@ -36,6 +38,7 @@ from scanner.web.services import (
 )
 from scanner.web.tenancy import Viewer, get_report, get_scan, get_target, not_found, scans_query
 from scanner.web.tenancy import targets_query as tq
+from scanner.web_scan import policy
 
 router = APIRouter(dependencies=[Depends(csrf_protect)])
 
@@ -78,6 +81,20 @@ def _site_summary(db: Session, target: Target) -> SiteSummary:
         )
     org = db.get(Organization, target.org_id)
     return SiteSummary(target, org.name if org else None, last, report, done, comparison)
+
+
+def _scan_limits(settings: Settings, target: Target) -> dict[str, int]:
+    """Limites que o worker-web aplica a este site (os de laboratório são mais altos)."""
+    lab = policy.is_lab_scope(scope_for(target).allowed_hosts, settings.lab_hosts)
+    if lab:
+        return {
+            "rps": settings.scan_lab_max_requests_per_second,
+            "minutes": settings.scan_lab_max_duration_minutes,
+        }
+    return {
+        "rps": settings.scan_max_requests_per_second,
+        "minutes": settings.scan_max_duration_minutes,
+    }
 
 
 def scans_for(target: Target):  # type: ignore[no-untyped-def]
@@ -255,6 +272,8 @@ def site_detail(
         record_value=verification.record_value(target.verification_token),
         recurrence=RECURRENCE,
         profiles=profiles_for(viewer, target, request.app.state.settings.lab_hosts),
+        profile_info=labels.PROFILE_INFO,
+        limits=_scan_limits(request.app.state.settings, target),
         # Só códigos conhecidos: texto livre na URL viraria injeção de conteúdo.
         error=SCAN_ERRORS.get(request.query_params.get("erro", "")),
     )

@@ -63,6 +63,7 @@ LAB_LOGIN: dict[str, dict[str, str]] = {
         "register_url": "http://juice-shop:3000/api/Users",
         "email": "scanner-test@lab.local",
         "password": "ScannerLab123!",
+        "protected_path": "/rest/basket/1",  # exige token válido (A08)
     },
 }
 
@@ -178,6 +179,8 @@ def _lab_login_credential(target: str) -> dict[str, str]:
         "login_url": cfg["login_url"],
         "email": cfg["email"],
         "password": cfg["password"],
+        # Recurso que exige token válido (checagem A08: token sem assinatura).
+        "protected_path": cfg.get("protected_path", ""),
     }
 
 

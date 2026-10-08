@@ -6,7 +6,7 @@ import json
 import logging
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -78,6 +78,7 @@ class LoginCredential:
     token_path: tuple[str, ...] = ("authentication", "token")
     header_name: str = "Authorization"
     header_template: str = "Bearer {token}"  # {token} é substituído pelo valor extraído
+    protected_path: str = ""  # recurso que exige auth (p/ A08); vazio desliga a checagem
 
 
 def extract_token(body: dict[str, Any], path: tuple[str, ...]) -> str:
@@ -269,6 +270,29 @@ class ZapScanner:
         return HeaderCredential(
             name=spec.header_name, value=spec.header_template.format(token=token)
         )
+
+    def login_attempt_status(self, spec: LoginCredential, password: str) -> int:
+        """Faz uma tentativa de login (pelo ZAP) com a senha dada e devolve o status HTTP.
+
+        Usado pela checagem A07 (bloqueio de força bruta) com senha errada, contra a conta de
+        teste. Não altera dados; é só um POST de login que vai falhar.
+        """
+        attempt = replace(spec, password=password)
+        sent = self.zap.core.send_request(build_login_request(attempt), followredirects=False)
+        return response_status(sent) or 0
+
+    def auth_request_status(self, url: str, header_name: str, header_value: str) -> int:
+        """GET em `url` (pelo ZAP) com um cabeçalho de autenticação, devolve o status.
+
+        Usado pela checagem A08 (token sem assinatura): manda o token forjado e lê o status.
+        """
+        host = urlsplit(url).netloc
+        req = (
+            f"GET {url} HTTP/1.1\r\nHost: {host}\r\n"
+            f"{header_name}: {header_value}\r\nAccept: */*\r\n\r\n"
+        )
+        sent = self.zap.core.send_request(req, followredirects=False)
+        return response_status(sent) or 0
 
     CREDENTIAL_RULE = "scanner-credential"
 

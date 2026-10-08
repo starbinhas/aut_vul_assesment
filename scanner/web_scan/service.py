@@ -6,6 +6,7 @@ import logging
 import time
 from collections.abc import Callable
 from typing import Any
+from urllib.parse import urljoin
 
 import redis
 from sqlalchemy.orm import Session, sessionmaker
@@ -28,6 +29,7 @@ from scanner.common.scope import ScopeGuard
 from scanner.web_scan import policy
 from scanner.web_scan.alerts import alert_to_finding
 from scanner.web_scan.policy import ScanProfile
+from scanner.web_scan.proactive import run_jwt_integrity, run_login_lockout
 from scanner.web_scan.zap import (
     HeaderCredential,
     LoginCredential,
@@ -148,6 +150,7 @@ def run_scan(
     recrawl_max_retries: int = 0,
     should_stop: Callable[[], bool] | None = None,
     on_partial: Callable[[str], None] | None = None,
+    on_proactive: Callable[[list[Finding]], None] | None = None,
     recovery_probe_interval_s: float = 15.0,
     recovery_max_wait_s: float = 600.0,
 ) -> list[Finding]:
@@ -160,11 +163,35 @@ def run_scan(
     # Erra para fora de run_scan (não é ScanTimeout): o handler decide re-tentar via fila.
     for base in msg.scope.base_urls:
         zap.wait_until_ready(base, readiness_attempts, readiness_delay_s)
+    login_spec: LoginCredential | None = None
     if isinstance(credential, LoginCredential):
+        login_spec = credential
         # Login do tipo "login": o ZAP autentica e nos devolve o cabeçalho com o token.
         credential = zap.login(credential)
     if credential is not None:
         zap.set_credential(credential)
+
+    # Checagens próprias de autenticação (A07/A08), que precisam do login/token: rodam aqui,
+    # emitem achados JÁ confirmados e vão à parte (não passam pela re-validação, que rebaixaria).
+    if login_spec is not None and isinstance(credential, HeaderCredential) and on_proactive:
+        found: list[Finding] = []
+        if a07 := run_login_lockout(zap, login_spec, msg.scan_id, msg.target_id):
+            found.append(a07)
+        if login_spec.protected_path:
+            protected = urljoin(msg.scope.base_urls[0], login_spec.protected_path)
+            if guard.allows(protected) and (
+                a08 := run_jwt_integrity(
+                    zap,
+                    credential.name,
+                    credential.value,
+                    protected,
+                    msg.scan_id,
+                    msg.target_id,
+                )
+            ):
+                found.append(a08)
+        if found:
+            on_proactive(found)
 
     timed_out = False
     partial = False
@@ -299,6 +326,7 @@ def _credential(payload: dict[str, Any]) -> HeaderCredential | LoginCredential |
             token_path=tuple(cred.get("token_path", ("authentication", "token"))),
             header_name=cred.get("header_name", "Authorization"),
             header_template=cred.get("header_template", "Bearer {token}"),
+            protected_path=cred.get("protected_path", ""),
         )
     raise ValueError(f"tipo de credencial não suportado: {kind!r}")
 
@@ -374,6 +402,7 @@ def handle(
     )
     progress("starting")
     try:
+        proactive: list[Finding] = []
         findings = run_scan(
             zap,
             msg,
@@ -387,6 +416,7 @@ def handle(
             recrawl_max_retries=settings.recrawl_max_retries,
             should_stop=lambda: is_stop_requested(sessions, msg.scan_id),
             on_partial=lambda reason: mark_partial(sessions, msg.scan_id, reason),
+            on_proactive=proactive.extend,
             recovery_probe_interval_s=settings.target_recovery_probe_interval_seconds,
             recovery_max_wait_s=settings.target_recovery_max_wait_minutes * 60,
         )
@@ -403,6 +433,11 @@ def handle(
     out = make_message(
         msg,
         "candidates",
-        {"tool": "zap", "findings": [f.model_dump(mode="json") for f in findings]},
+        {
+            "tool": "zap",
+            "findings": [f.model_dump(mode="json") for f in findings],
+            # Achados próprios já confirmados (A07/A08): upsert direto na validação, sem re-testar.
+            "proactive": [f.model_dump(mode="json") for f in proactive],
+        },
     )
     publish(r, STREAM_CANDIDATES, out)
