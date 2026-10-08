@@ -39,7 +39,7 @@ PHASE = {
     "passive": "Analisando as respostas",
     "active": "Testes ativos",
     "retrying": "Houve um erro; tentando de novo",
-    "target-unstable": "O site saiu do ar; esperando ele voltar para continuar",
+    "target-unstable": "Esperando o site voltar",
 }
 STEPS = [
     ("requested", "Na fila"),
