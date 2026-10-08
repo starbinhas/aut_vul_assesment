@@ -38,3 +38,50 @@ def test_every_proactive_validator_has_metadata() -> None:
         "logging_monitoring",
     ):
         assert name in CHECKS and CHECKS[name].owasp.startswith("A")
+
+
+# --- orquestrador A04 (ligado no pipeline): roda os caminhos e emite achados ---------------
+
+from types import SimpleNamespace  # noqa: E402
+
+from scanner.common.models import Scope  # noqa: E402
+from scanner.validation.exposed_files import SENSITIVE_PATHS  # noqa: E402
+from scanner.validation.proactive import run_exposed_files  # noqa: E402
+from tests.conftest import resp  # noqa: E402
+
+
+class FakeProbe:
+    def __init__(self, exposed: set[str]) -> None:
+        self.guard = SimpleNamespace(allows=lambda u: True)
+        self.exposed = exposed
+        self.requested: list[str] = []
+
+    def request(self, method: str, url: str):
+        self.requested.append(url)
+        if any(p in url for p in self.exposed):
+            return resp("conteudo confidencial de verdade e bem longo", status=200)
+        return resp("", status=404)
+
+
+def _scope() -> Scope:
+    return Scope(
+        scope_id="s",
+        verified=True,
+        locked=True,
+        base_urls=["http://juice-shop:3000/"],
+        allowed_hosts=["juice-shop"],
+    )
+
+
+def test_run_exposed_files_emits_for_exposed_only() -> None:
+    client = FakeProbe(exposed={SENSITIVE_PATHS[0]})
+    fs = run_exposed_files(_scope(), client, "scan-1", "t-1")
+    assert len(fs) == 1
+    assert fs[0].source.tool == "scanner"
+    assert fs[0].owasp == "A04:2025"
+    assert SENSITIVE_PATHS[0] in fs[0].location.url
+    assert len(client.requested) == len(SENSITIVE_PATHS)  # sondou todos os caminhos
+
+
+def test_run_exposed_files_empty_when_all_protected() -> None:
+    assert run_exposed_files(_scope(), FakeProbe(exposed=set()), "scan-1", "t-1") == []

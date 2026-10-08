@@ -8,11 +8,15 @@ contrato subiu para 1.1. Assim elas contam no relatório, não só numa ferramen
 from __future__ import annotations
 
 from dataclasses import dataclass
+from urllib.parse import urljoin
+
+import httpx
 
 from scanner.common.models import (
     Finding,
     Location,
     Outcome,
+    Scope,
     Severity,
     Source,
     Status,
@@ -20,6 +24,9 @@ from scanner.common.models import (
     make_finding_id,
 )
 from scanner.common.owasp import owasp_for_cwe
+from scanner.common.scope import OutOfScopeError
+from scanner.validation.exposed_files import SENSITIVE_PATHS, classify_exposure
+from scanner.validation.http import ProbeClient
 
 OUTCOME_TO_STATUS = {
     Outcome.CONFIRMED: Status.CONFIRMED,
@@ -84,3 +91,27 @@ def build_finding(scan_id: str, target_id: str, url: str, validation: Validation
         evidence=[validation.proof] if validation.proof else [],
         validation=validation,
     )
+
+
+def run_exposed_files(
+    scope: Scope, client: ProbeClient, scan_id: str, target_id: str
+) -> list[Finding]:
+    """Checagem A04 (arquivos sensíveis expostos) contra o escopo — automática, sem credencial.
+
+    Não destrutiva (só GET). Emite achado só quando CONFIRMED/LIKELY; caminho protegido
+    (401/403/404) vira FALSE_POSITIVE e não gera achado. finding_id determinístico -> idempotente.
+    """
+    findings: list[Finding] = []
+    for base in scope.base_urls:
+        for path in SENSITIVE_PATHS:
+            url = urljoin(base, path)
+            if not client.guard.allows(url):
+                continue
+            try:
+                resp = client.request("GET", url)
+            except (httpx.HTTPError, OutOfScopeError):
+                continue
+            validation = classify_exposure(path, url, resp)
+            if validation.outcome in (Outcome.CONFIRMED, Outcome.LIKELY):
+                findings.append(build_finding(scan_id, target_id, url, validation))
+    return findings

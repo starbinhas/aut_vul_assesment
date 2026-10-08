@@ -18,6 +18,7 @@ from scanner.common.models import Finding, Outcome, StageMessage, Status
 from scanner.common.queue import STREAM_VALIDATED, make_message, publish
 from scanner.common.scope import OutOfScopeError, ScopeGuard
 from scanner.validation import dedup, severity
+from scanner.validation import proactive as proactive_checks
 from scanner.validation.http import ProbeClient, UnsafeRequestError
 from scanner.validation.validators import select
 from scanner.validation.validators.base import result
@@ -101,10 +102,17 @@ def handle(
     client = ProbeClient(ScopeGuard(scope), max_rps=settings.scan_max_requests_per_second)
     try:
         validated = [validate_one(f, client) for f in new]
+        # Checagens próprias (fonte "scanner") que o ZAP/nuclei não fazem: rodam uma vez por scan,
+        # na mensagem da etapa 4 (toda a cadeia passa por aqui). Idempotentes (finding_id estável).
+        proactive = (
+            proactive_checks.run_exposed_files(scope, client, msg.scan_id, msg.target_id)
+            if tool == "zap"
+            else []
+        )
     finally:
         client.close()
 
-    for f in [*validated, *updated]:
+    for f in [*validated, *proactive, *updated]:
         _upsert(session, f)
     session.execute(
         insert(StageProgress).values(scan_id=msg.scan_id, tool=tool).on_conflict_do_nothing()
@@ -117,6 +125,7 @@ def handle(
         extra={
             "tool": tool,
             "new": len(validated),
+            "proactive": len(proactive),
             "merged": len(updated),
             "tools_done": tools_done,
         },
