@@ -88,6 +88,7 @@
     <dt>Enviamos</dt><dd>{{ p.request.method }} {{ p.request.url }}</dd>
     {% if p.response %}<dt>O site respondeu</dt><dd>HTTP {{ p.response.status }}{% if p.note %}, {{ p.note }}{% endif %}</dd>{% endif %}
   </dl>
+  {% if item.status.value in ("confirmed", "likely") %}<span class="stamp" aria-hidden="true">{{ "Provada" if item.status.value == "confirmed" else "Provável" }}</span>{% endif %}
   {% endif %}
 </div>
 {% endif %}

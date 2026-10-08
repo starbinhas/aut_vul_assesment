@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 
 from sqlalchemy import (
@@ -226,17 +227,42 @@ def get_known_routes(sessions, target_id: str) -> list[str]:  # type: ignore[no-
         return list(mem.routes) if mem is not None else []
 
 
+_STATIC_EXT = re.compile(
+    r"\.(png|jpe?g|gif|svg|ico|webp|js|mjs|css|woff2?|ttf|eot|map)(\?|$)", re.I
+)
+
+
+def route_priority(url: str) -> int:
+    """Valor de uma URL para re-testar: maior = mais importante manter na memória.
+
+    O scan ativo só rende em URL com parâmetro ou endpoint de API; arquivo estático (imagem/js/css)
+    não tem superfície de ataque. Ao estourar o teto, guardamos primeiro o que vale.
+    """
+    u = url.lower()
+    if "?" in u:  # tem parâmetro -> diretamente atacável
+        return 3
+    if "/rest/" in u or "/api/" in u or "/graphql" in u:  # endpoint de API
+        return 2
+    if _STATIC_EXT.search(u):  # estático -> menor valor
+        return 0
+    return 1  # página/rota comum
+
+
 def remember_routes(  # type: ignore[no-untyped-def]
     sessions, target_id: str, scan_id: str, routes: list[str], max_routes: int = 2000
 ) -> None:
     """Acumula as URLs rastreadas na memória do alvo (união com o que já havia).
 
-    Monotônico: só cresce. Ordenado e limitado a `max_routes` para não inchar a linha nem a
-    próxima semeadura. Idempotente: reprocessar o mesmo scan não muda o conjunto.
+    Ao estourar `max_routes`, mantém as URLs de MAIOR valor para re-teste (parâmetro > API >
+    página > estático) em vez de cortar por ordem alfabética — senão o teto enche de imagem/js e
+    descarta o endpoint que tem a falha. Idempotente: reprocessar o mesmo scan não muda o conjunto.
     """
     with sessions.begin() as session:
         mem = session.get(CrawlMemory, target_id)
-        merged = sorted(set(routes) if mem is None else set(mem.routes) | set(routes))[:max_routes]
+        union = set(routes) if mem is None else set(mem.routes) | set(routes)
+        # Ordena por valor (desc) e, em empate, alfabético — determinístico — e corta no teto.
+        merged = sorted(union, key=lambda u: (-route_priority(u), u))[:max_routes]
+        merged.sort()  # guarda em ordem estável (alfabética) para leitura/diff
         if mem is None:
             session.add(CrawlMemory(target_id=target_id, routes=merged, scan_id=scan_id))
         else:

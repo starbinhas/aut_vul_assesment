@@ -78,6 +78,22 @@
 </section>
 {% endif %}
 
+{% if trend.line %}
+{% set first_scan, first_n = trend.history[0] %}
+{% set last_scan, last_n = trend.history[-1] %}
+<section class="section">
+  <div class="section-head">
+    <h2>Falhas abertas ao longo do tempo</h2>
+    <span class="section-label">{{ trend.history|length }} scans concluídos</span>
+  </div>
+  <svg class="trend" viewBox="0 0 1000 96" preserveAspectRatio="none" role="img" aria-label="Eram {{ first_n }} falhas abertas no primeiro scan; agora são {{ last_n }}.">
+    <polygon class="area" points="{{ trend.area }}"></polygon>
+    <polyline class="line" points="{{ trend.line }}"></polyline>
+  </svg>
+  <div class="trend-caption"><span>{{ first_n|plural("falha", "falhas") }} em {{ first_scan.created_at|dt }}</span><span>{{ last_n|plural("falha", "falhas") }} em {{ last_scan.created_at|dt }}</span></div>
+</section>
+{% endif %}
+
 <section class="section">
   <div class="section-head"><h2>Scans</h2></div>
   {% if scans %}

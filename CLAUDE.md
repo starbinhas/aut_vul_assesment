@@ -100,9 +100,21 @@ agendador) e a interface web (cliente e admin). O contrato entre etapas continua
   cabeçalhos de tabela, selos e pílulas em texto normal, em frase. Mono só para o que é da máquina:
   URL, requisição, código, registro DNS.
 - Elemento de assinatura: o **recibo da prova** (macro `proof`) — o que enviamos e o que o site
-  respondeu, borda na cor da severidade. É o diferencial do produto; não criar outros destaques.
-- O topo do painel é o **próximo passo** ("Corrija primeiro a X em Y"), não blocos de números.
-- Proibido: degradês decorativos, Inter/Roboto, emoji na interface, ícones genéricos enfeitando
+  respondeu, borda na cor da severidade. Ao aparecer, as linhas saem como de uma impressora e,
+  se a falha foi provada, cai o carimbo ("Provada"/"Provável"). É o diferencial do produto; não
+  criar outros destaques.
+- O topo do painel é o **próximo passo** ("Corrija primeiro em Y: X"), não blocos de números.
+- **Luz da marca:** o azul frio das fotos do pitchy.me é a atmosfera. Uma luz azul no alto de cada
+  página (`body::before`), tingida de laranja/vermelho no topo do painel quando há falha alta ou
+  crítica, e a lâmina de luz no login. É a **única** luz decorativa permitida.
+- Cor com presença, mas com função: severidade também como superfície (fio e tom na linha da
+  falha, cabeçalho do recibo); azul `--live` para tudo que está ao vivo (scan rodando).
+- Movimento: uma entrada orquestrada por página (o topo), o recibo impresso, e respostas a ação
+  (abrir uma falha, filtrar a lista). Nada de animação em toda seção. Sempre com
+  `prefers-reduced-motion` desligando.
+- Visualização com função: mapa do site (cada página na cor da falha mais grave; falhas do site
+  todo ficam fora) e linha do tempo de falhas abertas por site.
+- Proibido: degradês decorativos (fora a luz da marca acima), Inter/Roboto, emoji na interface, ícones genéricos enfeitando
   título, três cards de "benefícios", blocos de "número grande + legenda", metadados separados por
   "·", numeração 01/02 fora de sequências reais, sombras e brilhos em tudo, textos vagos
   ("potencialize sua segurança"). Cor só com função: severidade, estado, ação.

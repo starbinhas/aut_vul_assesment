@@ -130,7 +130,13 @@ def _capture(page: Page, base: str, shot: Shot, out: Path) -> None:
 
 
 def run(
-    base: str, email: str, password: str, only: set[str], viewports: list[str], out: Path
+    base: str,
+    email: str,
+    password: str,
+    only: set[str],
+    viewports: list[str],
+    out: Path,
+    motion: bool = False,
 ) -> list[Shot]:
     out.mkdir(parents=True, exist_ok=True)
     shots: list[Shot] = []
@@ -145,6 +151,8 @@ def run(
                 locale="pt-BR",
                 color_scheme="dark",
                 device_scale_factor=1,
+                # Estado final das telas, sem animação pela metade (e testa o modo reduzido).
+                reduced_motion="no-preference" if motion else "reduce",
             )
             nav = ctx.new_page()  # login e descoberta de links; cada captura usa uma aba nova
 
@@ -186,6 +194,7 @@ def main() -> None:
     ap.add_argument("--only", default="", help="nomes separados por vírgula (ex.: painel,scan)")
     ap.add_argument("--viewport", choices=[*VIEWPORTS, "all"], default="all")
     ap.add_argument("--out", type=Path, default=Path("out/ui-shots"))
+    ap.add_argument("--motion", action="store_true", help="capturar com animações ligadas")
     args = ap.parse_args()
 
     base = args.base.rstrip("/")
@@ -196,7 +205,7 @@ def main() -> None:
 
     only = {n for n in args.only.split(",") if n}
     viewports = list(VIEWPORTS) if args.viewport == "all" else [args.viewport]
-    shots = run(base, email, password, only, viewports, args.out)
+    shots = run(base, email, password, only, viewports, args.out, args.motion)
 
     (args.out / "report.json").write_text(
         json.dumps([s.__dict__ for s in shots], ensure_ascii=False, indent=2)

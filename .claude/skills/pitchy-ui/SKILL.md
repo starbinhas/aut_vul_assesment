@@ -65,7 +65,10 @@ baixa.
 ## 4. Checklist da marca (proibições do CLAUDE.md)
 
 Antes de entregar, confira na captura:
-- [ ] sem degradê decorativo, sombra ou brilho de enfeite
+- [ ] sem degradê, sombra ou brilho de enfeite (a única luz é a da marca: `body::before`, topo do
+      painel e login)
+- [ ] movimento só na entrada do topo, no recibo e em resposta a ação; conferir quadro a quadro com
+      `--motion` e sem ele (estado final, `prefers-reduced-motion`)
 - [ ] sem Inter, Roboto ou fonte do sistema visível (General Sans e JetBrains Mono, servidas localmente)
 - [ ] sem emoji, sem ícone genérico enfeitando título
 - [ ] sem três cards de "benefícios" e sem bloco "número grande + legenda"

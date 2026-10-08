@@ -29,6 +29,10 @@
   --accent: #d8ff3e;          /* só ação principal e foco */
   --accent-ink: #0a0a0a;
 
+  /* luz da marca: o azul frio das fotos do pitchy.me. Atmosfera do topo e tudo que está ao vivo. */
+  --live: #5b93ff;            /* azul legível sobre o fundo (scan rodando, prova sendo feita) */
+  --glow: 31, 98, 181;        /* #1f62b5 em RGB, para a luz com transparência */
+
   /* severidade (legível sobre o fundo escuro) */
   --sev-critical: #ff5a5f;
   --sev-high: #ff8f3f;
@@ -79,12 +83,13 @@ hr { border: 0; border-top: 1px solid var(--line); margin: var(--s-6) 0; }
   position: sticky; top: 0; z-index: 10;
   display: flex; justify-content: center;
   padding: var(--s-4) var(--s-4) var(--s-3);
-  background: linear-gradient(var(--canvas) 70%, transparent);
 }
 .nav {
   display: flex; align-items: center; gap: var(--s-1);
   padding: 6px 6px 6px 18px;
-  background: #0d0f13;
+  background: rgba(13, 15, 19, .82);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
   border: 1px solid var(--line);
   border-radius: var(--r-pill);
   max-width: 100%;
@@ -219,10 +224,11 @@ td a.cell { text-decoration: none; display: block; }
 .pill { display: inline-block; font: 400 12px var(--font-text); padding: 2px 10px; border-radius: var(--r-pill); border: 1px solid var(--line-strong); color: var(--ink-soft); white-space: nowrap; text-decoration: none; }
 .pill.ok { border-color: #2d5a3e; color: var(--ok); }
 .pill.warn { border-color: #5a4a1c; color: var(--warn); }
-.pill.live { border-color: var(--ink-soft); color: var(--ink); }
-.pill.live::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; background: var(--ink); animation: pulse 1.6s ease-in-out infinite; }
+.pill.live { border-color: color-mix(in srgb, var(--live) 45%, transparent); color: var(--live); }
+.pill.live::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; background: var(--live); animation: ping 1.6s ease-out infinite; }
 .pill.new { border-color: var(--ink-soft); color: var(--ink); }
 @keyframes pulse { 50% { opacity: .25; } }
+@keyframes ping { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 70%, transparent); } to { box-shadow: 0 0 0 6px transparent; } }
 @media (prefers-reduced-motion: reduce) { .pill.live::before { animation: none; } }
 
 /* barra de distribuição por severidade: ver svg.sevbar-svg */
@@ -240,19 +246,26 @@ td a.cell { text-decoration: none; display: block; }
 .filters input[type=search] { width: 240px; height: 34px; border-radius: var(--r-pill); font-size: 13px; }
 .filters .spacer { flex: 1; }
 
-.issue { border-top: 1px solid var(--line); scroll-margin-top: 96px; }
+.issue { --sev: var(--sev-info); position: relative; border-top: 1px solid var(--line); scroll-margin-top: 96px; }
+.issue.sev-row-critical { --sev: var(--sev-critical); } .issue.sev-row-high { --sev: var(--sev-high); }
+.issue.sev-row-medium { --sev: var(--sev-medium); } .issue.sev-row-low { --sev: var(--sev-low); }
+/* fio na cor da severidade; ao abrir a falha ele desce pelo item inteiro */
+.issue::before { content: ""; position: absolute; left: 0; top: 20px; width: 2px; height: 20px; border-radius: 2px; background: var(--sev); transition: height .3s cubic-bezier(.2, .7, .2, 1); }
+.issue[open]::before { height: calc(100% - 40px); }
 .issue:last-child { border-bottom: 1px solid var(--line); }
-.issue > summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: 110px minmax(0, 1fr) auto; gap: var(--s-4); align-items: baseline; padding: 18px 0; }
+.issue > summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: 110px minmax(0, 1fr) auto; gap: var(--s-4); align-items: baseline; padding: 18px 12px 18px 18px; border-radius: var(--r-sm); transition: background .15s ease; }
+.issue > summary:hover, .issue[open] > summary { background: color-mix(in srgb, var(--sev) 6%, transparent); }
 .issue > summary::-webkit-details-marker { display: none; }
 .issue > summary:hover .title { text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 4px; }
 .issue .title { font-size: 16px; font-weight: 400; }
+.issue .sev::before { display: none; }  /* o fio à esquerda já marca a severidade */
 .issue .meta { font-size: 13px; color: var(--ink-faint); margin-top: 4px; }
 .issue .right { display: flex; gap: var(--s-2); align-items: center; }
 .issue[open] > summary .title { font-weight: 500; }
-.issue .body { padding: 0 0 var(--s-6) calc(110px + var(--s-4)); }
+.issue .body { padding: var(--s-2) 0 var(--s-6) calc(18px + 110px + var(--s-4)); }
 @media (max-width: 720px) {
   .issue > summary { grid-template-columns: 1fr; gap: 6px; }
-  .issue .body { padding-left: 0; }
+  .issue .body { padding-left: 18px; }
 }
 
 .explain { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s-5); margin-bottom: var(--s-5); }
@@ -294,8 +307,12 @@ pre {
 .timeline .step { padding-top: var(--s-3); border-top: 2px solid var(--line); color: var(--ink-faint); font-size: 14px; }
 .timeline .step .k { font: 400 12px var(--font-mono); display: block; margin-bottom: 4px; }
 .timeline .step.done { border-color: var(--ink-soft); color: var(--ink-soft); }
-.timeline .step.current { border-color: var(--ink); color: var(--ink); }
-.timeline .step.current .k { color: var(--ink); }
+.timeline .step { position: relative; }
+.timeline .step.current { border-color: color-mix(in srgb, var(--live) 30%, transparent); color: var(--ink); }
+.timeline .step.current .k { color: var(--live); }
+/* a etapa atual é "varrida" por uma luz, como um scanner passando */
+.timeline .step.current::before { content: ""; position: absolute; left: 0; right: 0; top: -2px; height: 2px; background: linear-gradient(90deg, transparent, var(--live), transparent) no-repeat; background-size: 40% 100%; animation: sweep 1.8s linear infinite; }
+@keyframes sweep { from { background-position: -60% 0; } to { background-position: 160% 0; } }
 @media (max-width: 720px) { .timeline { grid-template-columns: 1fr; } .timeline .step { padding: var(--s-2) 0; } }
 
 /* --- verificação de domínio ---------------------------------------------------------- */
@@ -395,12 +412,116 @@ svg.sevbar-svg .b-info { fill: var(--sev-info); }
 .progress-now .row { margin-bottom: 8px; }
 meter.bar { width: 100%; height: 8px; border: 0; border-radius: var(--r-pill); background: var(--surface-2); appearance: none; -webkit-appearance: none; }
 meter.bar::-webkit-meter-bar { background: var(--surface-2); border: 0; border-radius: var(--r-pill); height: 8px; }
-meter.bar::-webkit-meter-optimum-value { background: var(--ink); border-radius: var(--r-pill); transition: width .6s ease; }
+meter.bar::-webkit-meter-optimum-value { background: var(--live); border-radius: var(--r-pill); transition: width .6s ease; }
 meter.bar::-webkit-meter-suboptimum-value,
-meter.bar::-webkit-meter-even-less-good-value { background: var(--ink); border-radius: var(--r-pill); }
-meter.bar::-moz-meter-bar { background: var(--ink); border-radius: var(--r-pill); }
+meter.bar::-webkit-meter-even-less-good-value { background: var(--live); border-radius: var(--r-pill); }
+meter.bar::-moz-meter-bar { background: var(--live); border-radius: var(--r-pill); }
 .bar.indeterminate { width: 100%; height: 8px; border-radius: var(--r-pill); background: var(--surface-2); overflow: hidden; }
-.bar.indeterminate span { display: block; width: 40%; height: 100%; border-radius: var(--r-pill); background: var(--ink); animation: slide 1.4s ease-in-out infinite; }
+.bar.indeterminate span { display: block; width: 40%; height: 100%; border-radius: var(--r-pill); background: var(--live); animation: slide 1.4s ease-in-out infinite; }
 @keyframes slide { 0% { margin-left: -40%; } 100% { margin-left: 100%; } }
 @media (prefers-reduced-motion: reduce) { .bar.indeterminate span { animation: none; width: 100%; opacity: .4; } }
 .mt-3 { margin-top: var(--s-3); }
+
+/* --- luz e movimento ----------------------------------------------------------------- */
+/* A atmosfera: uma luz azul fria vinda do alto, como nas fotos da marca. É a única luz
+   decorativa da interface; o resto da cor tem função (severidade, estado, ação). */
+body::before {
+  content: ""; position: fixed; inset: 0 0 auto 0; height: 560px; z-index: -1; pointer-events: none;
+  background: radial-gradient(ellipse 46% 70% at 50% -18%, rgba(var(--glow), .34), transparent 72%);
+}
+body:has(.auth)::before { display: none; }
+body { isolation: isolate; }
+
+/* Topo do painel tingido pelo estado do site: calmo (azul da marca), atenção, crítico. */
+.next { position: relative; isolation: isolate; }
+.next::before {
+  content: ""; position: absolute; z-index: -1; pointer-events: none;
+  left: -18%; top: -40px; width: 80%; height: 340px;
+  background: radial-gradient(closest-side, var(--tone, rgba(var(--glow), .5)), transparent);
+  opacity: .26; filter: blur(8px);
+}
+.next[data-tone="high"] { --tone: var(--sev-high); }
+.next[data-tone="critical"] { --tone: var(--sev-critical); }
+
+/* Entrada orquestrada: uma só por página, no topo. */
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+:is(.enter, .page-head > div:first-child) > * { animation: rise .7s cubic-bezier(.2, .7, .2, 1) both; }
+:is(.enter, .page-head > div:first-child) > :nth-child(2) { animation-delay: .07s; }
+:is(.enter, .page-head > div:first-child) > :nth-child(3) { animation-delay: .14s; }
+:is(.enter, .page-head > div:first-child) > :nth-child(4) { animation-delay: .21s; }
+:is(.enter, .page-head > div:first-child) > :nth-child(5) { animation-delay: .28s; }
+:is(.enter, .page-head > div:first-child) > :nth-child(n+6) { animation-delay: .35s; }
+
+/* Recibo da prova: o cabeçalho leva o tom da severidade; as linhas saem como de uma impressora
+   e, se a falha foi provada, cai o carimbo. */
+.proof { position: relative; }
+.proof .head { background: color-mix(in srgb, var(--sev, var(--ink-faint)) 9%, transparent); }
+@keyframes print-line { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes stamp { 0% { opacity: 0; transform: rotate(-9deg) scale(1.7); } 70% { opacity: 1; transform: rotate(-9deg) scale(.94); } 100% { opacity: 1; transform: rotate(-9deg) scale(1); } }
+.next .proof dt, .next .proof dd, .issue[open] .proof dt, .issue[open] .proof dd { animation: print-line .55s steps(26, end) both; }
+.next .proof dt:nth-of-type(1), .issue[open] .proof dt:nth-of-type(1) { animation-delay: .35s; }
+.next .proof dd:nth-of-type(1), .issue[open] .proof dd:nth-of-type(1) { animation-delay: .5s; }
+.next .proof dt:nth-of-type(2), .issue[open] .proof dt:nth-of-type(2) { animation-delay: 1.05s; }
+.next .proof dd:nth-of-type(2), .issue[open] .proof dd:nth-of-type(2) { animation-delay: 1.2s; }
+.proof .stamp {
+  position: absolute; right: var(--s-4); bottom: 10px; pointer-events: none;
+  padding: 3px 10px; border: 2px solid var(--sev); border-radius: var(--r-sm);
+  outline: 1px solid color-mix(in srgb, var(--sev) 45%, transparent); outline-offset: 2px;
+  color: var(--sev); font: 600 13px var(--font-text); letter-spacing: .02em;
+  background: color-mix(in srgb, var(--sev) 8%, #0c0e12);
+  transform: rotate(-9deg);
+}
+.next .proof .stamp, .issue[open] .proof .stamp { animation: stamp .45s cubic-bezier(.3, 1.4, .5, 1) 1.8s both; }
+@media (max-width: 560px) { .proof .stamp { position: static; display: inline-block; margin: 0 var(--s-4) 12px; } }
+
+/* "Não apareceu mais": o nome é riscado, devagar, depois que a página entra. */
+@keyframes strike { to { background-size: 100% 1px; } }
+.gone-item .t { background: linear-gradient(currentColor, currentColor) no-repeat 0 58% / 0 1px; animation: strike .6s ease-out .8s forwards; }
+
+/* Mapa do site: cada quadrado é uma página, na cor da falha mais grave dela. */
+.sitemap { display: grid; gap: 10px; }
+.sitemap .group { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: var(--s-4); align-items: start; }
+.sitemap .path { font: 400 12.5px var(--font-mono); color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-top: 1px; }
+.sitemap .path .n { color: var(--ink-faint); font-family: var(--font-text); margin-left: 6px; }
+.sitemap .cells { display: flex; flex-wrap: wrap; gap: 3px; }
+.cell { display: block; width: 11px; height: 11px; border-radius: 2px; background: var(--c, var(--sev-info)); opacity: .9; transition: transform .12s ease, opacity .12s ease; }
+.sitemap a.cell:hover, .sitemap a.cell:focus-visible { transform: scale(1.5); opacity: 1; outline: 1px solid var(--ink); outline-offset: 1px; }
+.cell.c-critical { --c: var(--sev-critical); } .cell.c-high { --c: var(--sev-high); }
+.cell.c-medium { --c: var(--sev-medium); } .cell.c-low { --c: var(--sev-low); }
+.cell.c-info { --c: #4a4d55; }
+.cell.c-none { --c: #22252c; }  /* só falhas do site todo */
+.sitemap-legend { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-5); margin-top: var(--s-4); font-size: 13px; color: var(--ink-soft); }
+.sitemap-legend span { display: inline-flex; align-items: center; gap: 7px; }
+.sitemap-legend .cell { width: 9px; height: 9px; }
+.sitemap .rest { font-size: 12.5px; color: var(--ink-faint); line-height: 11px; margin-left: 4px; }
+.sitemap .cells:not(:has(.cell)) .rest { margin-left: 0; }
+.sitemap-note { font-size: 13px; color: var(--ink-soft); margin: 0 0 var(--s-4); max-width: 72ch; }
+@media (max-width: 720px) { .sitemap .group { grid-template-columns: 1fr; gap: 6px; } }
+
+/* Linha do tempo de falhas abertas por site. */
+.trend { display: block; width: 100%; height: 96px; overflow: visible; }
+.trend .area { fill: rgba(var(--glow), .16); }
+.trend .line { fill: none; stroke: var(--live); stroke-width: 1.75; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; stroke-dasharray: 2000; stroke-dashoffset: 2000; animation: draw 1.4s cubic-bezier(.4, 0, .2, 1) .3s forwards; }
+.trend .dot { fill: var(--live); }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+.trend-caption { display: flex; justify-content: space-between; gap: var(--s-4); font-size: 13px; color: var(--ink-soft); margin-top: var(--s-2); }
+
+/* Login: a lâmina de luz da marca atravessa o painel da esquerda. */
+.auth .left { position: relative; overflow: hidden; isolation: isolate; }
+.auth .left::before {
+  content: ""; position: absolute; z-index: -1; pointer-events: none; inset: -20% auto -20% 90%; width: 2px;
+  background: linear-gradient(transparent, rgba(120, 170, 255, .9) 45%, transparent);
+  box-shadow: 0 0 40px 12px rgba(var(--glow), .45), 0 0 140px 50px rgba(var(--glow), .18);
+  transform: rotate(8deg);
+}
+
+/* Troca da lista de falhas (filtros/busca) com View Transitions: a lista se recompõe. */
+::view-transition-old(issues), ::view-transition-new(issues) { animation-duration: .22s; }
+#issues { view-transition-name: issues; }
+
+@media (prefers-reduced-motion: reduce) {
+  :is(.enter, .page-head > div:first-child) > *, .proof dt, .proof dd, .proof .stamp, .gone-item .t, .trend .line, .timeline .step.current::before, .pill.live::before { animation: none !important; }
+  .gone-item .t { background-size: 100% 1px; }
+  .trend .line { stroke-dashoffset: 0; }
+  .issue::before { transition: none; }
+}

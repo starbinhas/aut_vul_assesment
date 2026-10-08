@@ -166,3 +166,28 @@ def test_mark_partial_sets_flag_and_reason(sessions) -> None:
         scan = s.get(Scan, "s1")
         assert scan.partial is True
         assert scan.partial_reason == "target-unstable"
+
+
+# --- priorização da memória: guarda o que vale (parâmetro/API) ao estourar o teto ---------
+
+from scanner.common.db import route_priority  # noqa: E402
+
+
+def test_route_priority_order() -> None:
+    assert route_priority("http://a/busca?q=1") == 3  # parâmetro
+    assert route_priority("http://a/rest/users") == 2  # API
+    assert route_priority("http://a/sobre") == 1  # página
+    assert route_priority("http://a/app.js") == 0  # estático
+    assert route_priority("http://a/logo.png") == 0
+
+
+def test_cap_keeps_valuable_over_static(sessions) -> None:
+    static = [f"http://a/img{i:03d}.png" for i in range(20)]
+    valuable = ["http://a/rest/products/search?q=x", "http://a/rest/admin", "http://a/login"]
+    remember_routes(sessions, "t1", "s1", static + valuable, max_routes=5)
+    stored = get_known_routes(sessions, "t1")
+    assert len(stored) == 5
+    # Os valiosos sobrevivem ao teto; os estáticos é que são cortados.
+    assert "http://a/rest/products/search?q=x" in stored
+    assert "http://a/rest/admin" in stored
+    assert "http://a/login" in stored

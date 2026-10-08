@@ -61,9 +61,38 @@
   </div>
 </section>
 
+{% if sitemap %}
+{% set shown = sitemap.groups|sum(attribute="cells", start=[]) %}
+{% set present = shown|map(attribute=1)|reject("none")|map(attribute="value")|unique|list %}
+<section class="section">
+  <div class="section-head">
+    <h2>Onde estão as falhas</h2>
+    <span class="section-label">{{ sitemap.pages|plural("página com falha", "páginas com falha") }}, por seção do site. Clique em uma para ver só as falhas dela.</span>
+  </div>
+  {% if sitemap.site_wide %}
+  <p class="sitemap-note">{% for it in sitemap.site_wide[:3] %}{{ it.finding.title|name }}{% if not loop.last %}, {% endif %}{% endfor %}{% if sitemap.site_wide|length > 3 %} e mais {{ sitemap.site_wide|length - 3 }}{% endif %} {{ "aparece" if sitemap.site_wide|length == 1 else "aparecem" }} em quase todas as páginas. Uma correção no servidor resolve o site todo; por isso {{ "ela fica" if sitemap.site_wide|length == 1 else "elas ficam" }} fora do mapa.</p>
+  {% endif %}
+  <div class="sitemap">
+    {% for g in sitemap.groups %}
+    <div class="group">
+      <div class="path" title="{{ g.path }}">{{ g.path }}<span class="n">{{ g.cells|length }}</span></div>
+      {% set only_wide = g.cells|selectattr(1, "none")|list|length %}
+      <div class="cells">
+        {%- for page, sev in g.cells if sev %}<a class="cell c-{{ sev.value }}" href="/scans/{{ scan.scan_id }}?q={{ page|urlencode }}#issues" title="{{ page }}, {{ sev.value|severity|lower }}" tabindex="-1" aria-hidden="true"></a>{% endfor %}
+        {%- if only_wide %}<span class="rest">{{ "+ " if only_wide < g.cells|length }}{{ only_wide|plural("página só com as falhas do site todo", "páginas só com as falhas do site todo") }}</span>{% endif -%}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="sitemap-legend" aria-hidden="true">
+    {% for s in ["critical", "high", "medium", "low", "info"] if s in present %}<span><i class="cell c-{{ s }}"></i>{{ s|severity }}</span>{% endfor %}
+  </div>
+</section>
+{% endif %}
+
 <section class="section">
   <form class="filters" method="get" action="/scans/{{ scan.scan_id }}"
-        hx-get="/scans/{{ scan.scan_id }}" hx-target="#issues" hx-select="#issues" hx-swap="outerHTML" hx-push-url="true"
+        hx-get="/scans/{{ scan.scan_id }}" hx-target="#issues" hx-select="#issues" hx-swap="outerHTML transition:true" hx-push-url="true"
         hx-trigger="change, input delay:300ms from:find input[type=search]">
     {% for s in severities %}
       <label class="chip"><input type="checkbox" name="sev" value="{{ s.value }}" {% if s.value in filters.sev %}checked{% endif %}><span>{{ s.value|severity }}</span></label>
@@ -89,7 +118,7 @@
   {% for it in items %}
     {% set f = it.finding %}
     {% set iid = item_id(it.group_key) %}
-    <details class="issue" id="item-{{ iid }}">
+    <details class="issue sev-row-{{ it.severity.value }}" id="item-{{ iid }}">
       <summary>
         <span>{{ sev(it.severity.value) }}</span>
         <span>

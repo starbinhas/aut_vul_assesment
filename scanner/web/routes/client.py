@@ -30,7 +30,9 @@ from scanner.web.services import (
     previous_done_scan,
     profiles_for,
     reviews_since_report,
+    site_map,
     start_scan,
+    trend_paths,
 )
 from scanner.web.tenancy import Viewer, get_report, get_scan, get_target, not_found, scans_query
 from scanner.web.tenancy import targets_query as tq
@@ -232,6 +234,13 @@ def site_detail(
         r.scan_id: load_report(r)
         for r in db.scalars(select(Report).where(Report.scan_id.in_([s.scan_id for s in scans])))
     }
+    # Falhas abertas a cada scan concluído, do mais antigo ao mais recente.
+    history = [
+        (s, sum(1 for i in rep.items if i.status in OPEN))
+        for s in reversed(scans)
+        if s.status == ScanStatus.DONE and (rep := reports.get(s.scan_id))
+    ]
+    line, area = trend_paths([n for _, n in history])
     return render(
         request,
         "client/site_detail.html",
@@ -240,6 +249,7 @@ def site_detail(
         s=_site_summary(db, target),
         scans=scans,
         reports=reports,
+        trend={"line": line, "area": area, "history": history},
         running=active_scan(db, target.target_id),
         record_name=verification.record_name(target.domain),
         record_value=verification.record_value(target.verification_token),
@@ -375,6 +385,7 @@ def scan_detail(
         ),
         items=_filter(report.items, sev, st, q) if report else [],
         comparison=comparison,
+        sitemap=site_map(report) if report and report.items else None,
         uniform_status=(
             report.items[0].status
             if report and report.items and len({i.status for i in report.items}) == 1

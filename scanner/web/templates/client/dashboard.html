@@ -6,7 +6,8 @@
 {% set scanned = sites|selectattr("report")|list %}
 {% set first = fix_now[0] if fix_now else none %}
 
-<section class="next">
+{% set top = fix_now[0][1].severity.value if fix_now else none %}
+<section class="next enter" data-tone="{{ {'critical': 'critical', 'high': 'high'}.get(top, 'calm') }}">
   <p class="eyebrow">{{ org_name or ("Todas as organizações" if viewer.is_admin else "Visão geral") }}</p>
   {% if not sites %}
     <h1>Comece cadastrando o seu site.<br><span class="dim">São três passos até o primeiro relatório.</span></h1>
@@ -61,12 +62,12 @@
       <h3><span class="n">{{ gone_items|length }}</span> {{ "não apareceu mais" if gone_items|length == 1 else "não apareceram mais" }}</h3>
       <ul class="list">
         {% for s, it in gone_items[:5] %}
-        <li class="gone-item"><span>{{ it.finding.title|name }}</span><span class="small">{{ s.target.domain }}</span></li>
+        <li class="gone-item"><span class="t">{{ it.finding.title|name }}</span><span class="small">{{ s.target.domain }}</span></li>
         {% else %}<li class="faint">Nenhuma ainda. Corrija e rode um novo scan para confirmar.</li>{% endfor %}
       </ul>
       {% if gone_items|length > 5 %}
       <details class="more"><summary>Ver as outras {{ gone_items|length - 5 }}</summary>
-        <ul class="list">{% for s, it in gone_items[5:] %}<li class="gone-item"><span>{{ it.finding.title|name }}</span><span class="small">{{ s.target.domain }}</span></li>{% endfor %}</ul>
+        <ul class="list">{% for s, it in gone_items[5:] %}<li class="gone-item"><span class="t">{{ it.finding.title|name }}</span><span class="small">{{ s.target.domain }}</span></li>{% endfor %}</ul>
       </details>
       {% endif %}
     </div>
@@ -75,7 +76,7 @@
   <details class="more mt-4">
     <summary>{{ not_retested|length|plural("falha do scan anterior não foi testada", "falhas do scan anterior não foram testadas") }} desta vez</summary>
     <p class="small muted">As páginas onde elas apareceram não foram alcançadas neste scan. Não contam como corrigidas: o próximo scan testa de novo.</p>
-    <ul class="list">{% for s, it in not_retested %}<li class="gone-item"><span>{{ it.finding.title|name }}</span><span class="small">{{ s.target.domain }}</span></li>{% endfor %}</ul>
+    <ul class="list">{% for s, it in not_retested %}<li class="gone-item untested"><span>{{ it.finding.title|name }}</span><span class="small">{{ s.target.domain }}</span></li>{% endfor %}</ul>
   </details>
   {% endif %}
 </section>

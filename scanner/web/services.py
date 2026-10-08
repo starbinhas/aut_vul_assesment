@@ -25,7 +25,15 @@ from scanner.common.db import (
     set_scan_status,
 )
 from scanner.common.grouping import normalize_key
-from scanner.common.models import Finding, Outcome, Scope, StageMessage, Status, Validation
+from scanner.common.models import (
+    Finding,
+    Outcome,
+    Scope,
+    Severity,
+    StageMessage,
+    Status,
+    Validation,
+)
 from scanner.common.queue import (
     DEAD_LETTER_SUFFIX,
     STREAM_CANDIDATES,
@@ -262,6 +270,80 @@ def compare(
         pages_now=pages_now,
         pages_before=pages_before,
     )
+
+
+@dataclass
+class MapGroup:
+    """Uma seção do site (primeiro trecho do caminho) e suas páginas com falha. Severidade
+    `None`: a página só tem falhas que valem para o site todo."""
+
+    path: str
+    cells: list[tuple[str, Severity | None]]
+
+
+@dataclass
+class SiteMap:
+    groups: list[MapGroup]
+    site_wide: list[ReportItem]  # falhas em quase todas as páginas (ex.: cabeçalho ausente)
+    pages: int
+
+
+# Falha presente em pelo menos esta fração das páginas é "do site todo": pintaria o mapa
+# inteiro de uma cor só e esconderia as falhas específicas de cada página.
+SITE_WIDE_SHARE = 0.5
+
+
+def _section(page: str) -> str:
+    parts = page.strip("/").split("/")
+    if not parts[0] or (len(parts) == 1 and "." in parts[0]):
+        return "/"  # a raiz e os arquivos soltos nela (main.js, chunk-….js)
+    return f"/{parts[0]}"
+
+
+def _rank(cell: tuple[str, Severity | None]) -> int:
+    return cell[1].rank if cell[1] else -1
+
+
+def site_map(report: ReportModel, max_groups: int = 12) -> SiteMap:
+    """Páginas com falha agrupadas por seção, cada uma na cor da falha mais grave dela."""
+    pages_of = {
+        id(item): {urlsplit(loc.url).path or "/" for loc in item.locations} for item in report.items
+    }
+    pages = set().union(*pages_of.values()) if pages_of else set()
+    site_wide = [i for i in report.items if len(pages_of[id(i)]) >= SITE_WIDE_SHARE * len(pages)]
+    worst: dict[str, Severity | None] = dict.fromkeys(pages)
+    for item in report.items:
+        if item in site_wide:
+            continue
+        for page in pages_of[id(item)]:
+            current = worst[page]
+            if current is None or item.severity.rank > current.rank:
+                worst[page] = item.severity
+    sections: dict[str, list[tuple[str, Severity | None]]] = {}
+    for page, sev in worst.items():
+        sections.setdefault(_section(page), []).append((page, sev))
+    ordered = sorted(sections.items(), key=lambda kv: (-max(map(_rank, kv[1])), -len(kv[1]), kv[0]))
+    if len(ordered) > max_groups:
+        rest = [cell for _, cells in ordered[max_groups - 1 :] for cell in cells]
+        ordered = [*ordered[: max_groups - 1], ("outras seções", rest)]
+    groups = [
+        MapGroup(path, sorted(cells, key=lambda c: (-_rank(c), c[0]))) for path, cells in ordered
+    ]
+    return SiteMap(groups, site_wide, len(pages))
+
+
+def trend_paths(values: list[int], width: int = 1000, height: int = 96) -> tuple[str, str]:
+    """Linha e área (pontos SVG) de uma série, do mais antigo ao mais recente."""
+    if len(values) < 2:
+        return "", ""
+    top, pad = max(values) or 1, 6
+    step = width / (len(values) - 1)
+    points = [
+        (round(i * step, 1), round(height - pad - (v / top) * (height - 2 * pad), 1))
+        for i, v in enumerate(values)
+    ]
+    line = " ".join(f"{x},{y}" for x, y in points)
+    return line, f"0,{height} {line} {width},{height}"
 
 
 def item_id(group_key: str) -> str:

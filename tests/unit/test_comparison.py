@@ -103,3 +103,32 @@ def test_operator_notes_are_hidden_from_clients() -> None:
 def test_legacy_validation_reasons_are_rewritten() -> None:
     assert labels.reason("ainda não há validador para esta família").startswith("Ainda não temos")
     assert labels.reason("SQLITE_ERROR refletido") == "SQLITE_ERROR refletido"
+
+
+def test_site_map_sets_site_wide_findings_apart() -> None:
+    from scanner.web.services import site_map
+
+    pages = ["/", "/ftp/a.bak", "/rest/products/search", "/main.js"]
+    report = _report(
+        *(_csp(LAB_URL + p) for p in pages),  # em todas as páginas: "do site todo"
+        _sqli(LAB_URL + "/rest/products/search?q=x"),
+    )
+    m = site_map(report)
+    assert [i.finding.title for i in m.site_wide] == [
+        "Content Security Policy (CSP) Header Not Set"
+    ]
+    cells = {page: sev for g in m.groups for page, sev in g.cells}
+    assert cells["/rest/products/search"] is not None  # a SQLi colore a página
+    assert cells["/ftp/a.bak"] is None  # só a falha do site todo
+    sections = {g.path for g in m.groups}
+    assert sections == {"/", "/ftp", "/rest"}  # main.js na raiz vai para "/"
+    assert m.groups[0].path == "/rest"  # a seção com a falha mais grave vem primeiro
+
+
+def test_trend_paths() -> None:
+    from scanner.web.services import trend_paths
+
+    assert trend_paths([5]) == ("", "")
+    line, area = trend_paths([10, 5, 0], width=100, height=20)
+    assert line == "0.0,6.0 50.0,10.0 100.0,14.0"
+    assert area.startswith("0,20 ") and area.endswith(" 100,20")
