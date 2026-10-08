@@ -18,6 +18,8 @@ STATUS = {
 }
 SCAN_STATUS = {
     "requested": "Na fila",
+    "recon": "Procurando o que existe no site",
+    "cve_scanning": "Procurando falhas conhecidas",
     "web_scanning": "Testando o site",
     "validating": "Validando",
     "reporting": "Gerando relatório",
@@ -27,6 +29,9 @@ SCAN_STATUS = {
 }
 PHASE = {
     "starting": "Preparando o teste",
+    "recon": "Procurando o que existe no site",
+    "cve": "Procurando falhas conhecidas",
+    "validate": "Confirmando os achados",
     "spider": "Mapeando as páginas",
     "ajax_spider": "Mapeando páginas dinâmicas",
     "passive": "Analisando as respostas",

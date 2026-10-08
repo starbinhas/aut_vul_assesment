@@ -80,7 +80,7 @@ def handle(
     candidates = [Finding.model_validate(d) for d in msg.payload.get("findings", [])]
     candidates = [c for c in candidates if c.scan_id == msg.scan_id]
     set_scan_status(
-        sessions, msg.scan_id, ScanStatus.VALIDATING, f"validando {len(candidates)} candidatos"
+        sessions, msg.scan_id, ScanStatus.VALIDATING, "validate"
     )
 
     existing = [

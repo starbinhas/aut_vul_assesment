@@ -71,16 +71,14 @@ def handle(
 
     with sessions() as authz:
         scope = check_authorized(authz, msg)
-    set_scan_status(sessions, msg.scan_id, ScanStatus.RECON, "reconhecimento (naabu)")
+    set_scan_status(sessions, msg.scan_id, ScanStatus.RECON, "recon")
     try:
         ports = discover(scope)
     except RuntimeError as exc:
         # naabu ausente ou falhou: não trava o pipeline, segue para as próximas etapas.
         log.error("recon indisponível, seguindo", extra={"error": str(exc)})
         ports = []
-    set_scan_status(
-        sessions, msg.scan_id, ScanStatus.RECON, f"{len(ports)} portas; disparando CVEs e web"
-    )
+    log.info("recon: portas encontradas", extra={"ports": len(ports)})
     # Fan-out: etapa 3 (nuclei) e etapa 4 (ZAP) usam o mesmo escopo e correm em paralelo.
     publish(r, STREAM_CVE_REQUESTED, make_message(msg, "cve.requested", dict(msg.payload)))
     publish(r, STREAM_WEB_REQUESTED, make_message(msg, "web.requested", dict(msg.payload)))

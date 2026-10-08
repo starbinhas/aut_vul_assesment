@@ -586,7 +586,9 @@ def test_progress_shows_percent_and_eta(env) -> None:
         scan.progress_at = datetime.now(UTC)
     html = login(app, "ana@loja-a.test").get("/scans/scan-a/andamento").text
     assert "25%" in html
-    assert "1240 requisições enviadas" in html
+    # número cru de engenharia não aparece para o cliente; a fase, sim
+    assert "1240 requisições enviadas" not in html
+    assert "Testes ativos" in html
     # 25% em 5 min → faltam ~15 min
     assert "faltam ~15 min" in html
     assert "<meter" in html and 'value="25"' in html
@@ -603,4 +605,6 @@ def test_progress_indeterminate_when_no_percent(env) -> None:
         scan.progress_pct = None
         scan.progress_info = "30 respostas na fila"
     html = login(app, "ana@loja-a.test").get("/scans/scan-a/andamento").text
-    assert "indeterminate" in html and "30 respostas na fila" in html
+    assert "indeterminate" in html
+    assert "30 respostas na fila" not in html  # número cru fora
+    assert "Analisando as respostas" in html  # fase legível no lugar

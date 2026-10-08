@@ -183,7 +183,7 @@ def handle(
     except Exception:
         set_scan_status(sessions, msg.scan_id, ScanStatus.WEB_SCANNING, "retrying")
         raise
-    set_scan_status(sessions, msg.scan_id, ScanStatus.VALIDATING, f"{len(findings)} candidatos")
+    set_scan_status(sessions, msg.scan_id, ScanStatus.VALIDATING, "validate")
     out = make_message(
         msg,
         "candidates",

@@ -1,5 +1,6 @@
-{% set order = ["requested", "web_scanning", "validating", "reporting", "done"] %}
-{% set current = order.index(scan.status) if scan.status in order else 0 %}
+{% set step_of = {"requested": 0, "recon": 1, "cve_scanning": 1, "web_scanning": 1,
+                  "validating": 2, "reporting": 3, "done": 4} %}
+{% set current = step_of.get(scan.status, 0) %}
 {% set running = scan.status not in ("done", "failed") %}
 <div id="progress" {% if running %}hx-get="/scans/{{ scan.scan_id }}/andamento" hx-trigger="every 4s" hx-swap="outerHTML"{% endif %}>
   <div class="timeline" role="list">
@@ -16,7 +17,7 @@
   {% set eta = scan_eta(scan) %}
   <div class="progress-now">
     <div class="row between">
-      <span>{{ scan.status_detail|phase if scan.status_detail else scan.status|scan_status }}{% if scan.progress_info %} — {{ scan.progress_info }}{% endif %}</span>
+      <span>{{ scan.status_detail|phase if scan.status_detail else scan.status|scan_status }}</span>
       <span class="faint small" aria-live="polite">{% if pct is not none %}{{ pct }}%{% if eta %} · faltam {{ eta }}{% endif %}{% endif %}</span>
     </div>
     {% if pct is not none %}

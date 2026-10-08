@@ -56,16 +56,14 @@ def handle(
 
     with sessions() as authz:
         scope = check_authorized(authz, msg)
-    set_scan_status(sessions, msg.scan_id, ScanStatus.CVE_SCANNING, "falhas conhecidas (nuclei)")
+    set_scan_status(sessions, msg.scan_id, ScanStatus.CVE_SCANNING, "cve")
     target_url = scope.base_urls[0]
     try:
         findings = scan_cves(target_url, msg.scan_id, msg.target_id)
     except RuntimeError as exc:
         log.error("nuclei indisponível", extra={"error": str(exc)})
         findings = []
-    set_scan_status(
-        sessions, msg.scan_id, ScanStatus.VALIDATING, f"{len(findings)} candidatos (CVE)"
-    )
+    log.info("cve: candidatos", extra={"findings": len(findings)})
     out = make_message(
         msg,
         "candidates",
