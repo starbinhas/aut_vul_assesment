@@ -9,7 +9,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
-from urllib.parse import urlsplit
 
 from pydantic import ValidationError
 from sqlalchemy import event, func, select
@@ -34,6 +33,7 @@ from scanner.common.queue import (
     STREAM_VALIDATED,
     STREAM_WEB_REQUESTED,
 )
+from scanner.common.scope import scope_for
 from scanner.report.models import Report as ReportModel
 from scanner.report.models import ReportItem
 from scanner.web.tenancy import Viewer
@@ -83,17 +83,6 @@ def active_scan(session: Session, target_id: str) -> Scan | None:
         .order_by(Scan.created_at.desc())
         .limit(1)
     ).first()
-
-
-def scope_for(target: Target) -> Scope:
-    host = urlsplit(target.base_url).hostname or target.domain
-    return Scope(
-        scope_id=f"site-{target.target_id}",
-        verified=True,
-        locked=True,
-        base_urls=[target.base_url],
-        allowed_hosts=[host],
-    )
 
 
 def profiles_for(viewer: Viewer, target: Target, lab_hosts: list[str]) -> list[policy.ScanProfile]:

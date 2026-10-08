@@ -52,3 +52,15 @@ class ScopeGuard:
             prefix = rf"https?://{re.escape(host)}(:\d+)?"
             out += [prefix + ".*" + p.pattern.removeprefix("^") + ".*" for p in self._exclude]
         return out
+
+
+def scope_for(target: object) -> Scope:
+    """Escopo travado de um alvo verificado (etapa 1). `target` é um db.Target."""
+    host = urlsplit(target.base_url).hostname or target.domain  # type: ignore[attr-defined]
+    return Scope(
+        scope_id=f"site-{target.target_id}",  # type: ignore[attr-defined]
+        verified=True,
+        locked=True,
+        base_urls=[target.base_url],  # type: ignore[attr-defined]
+        allowed_hosts=[host],
+    )

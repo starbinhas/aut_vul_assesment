@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     web_secure_cookies: bool = True  # False só em desenvolvimento local sem HTTPS
     web_session_hours: int = Field(default=12, ge=1, le=72)
 
+    # Etapa 7: de quanto em quanto tempo o agendador verifica alvos vencidos.
+    recurrence_check_minutes: int = Field(default=60, ge=1)
+
     log_level: str = "INFO"
     consumer_name: str = "worker-1"
 

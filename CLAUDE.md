@@ -10,10 +10,11 @@ acionável. O fluxo completo tem 7 etapas (ver `docs/processo-scan-etapa-por-eta
 1 Autorização → 2 Reconhecimento (naabu) → 3 CVEs (nuclei) → **4 Web (OWASP ZAP)** →
 **5 Validação** → **6 Relatório + LLM** → 7 Recorrência
 
-**Este repositório está se tornando o pipeline inteiro.** Já cobre a **etapa 1 (Autorização, via
-interface)**, as etapas **4, 5 e 6** e a interface web (cliente e admin). As etapas **2
-(Reconhecimento), 3 (CVEs) e 7 (Recorrência) estão sendo integradas** aqui (decisão de trazer tudo
-para este projeto). O contrato entre etapas continua valendo internamente (ver "Contrato entre etapas").
+**Este repositório cobre o pipeline inteiro** (decisão de trazer tudo para cá). Etapa 1 (Autorização,
+via interface), 2 (Reconhecimento, `scanner/recon`, naabu), 3 (CVEs, `scanner/cve`, nuclei + o SCA
+`scanner/sca`), 4 (Web/ZAP), 5 (Validação), 6 (Relatório), 7 (Recorrência, `scanner/recurrence`,
+agendador) e a interface web (cliente e admin). O contrato entre etapas continua valendo internamente
+(ver "Contrato entre etapas"). Entrada do pipeline: `scan.recon.requested`.
 
 ## Regras que nunca podem ser quebradas
 

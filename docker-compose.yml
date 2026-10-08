@@ -143,6 +143,14 @@ services:
       CONSUMER_NAME: worker-report-1
     networks: [internal, egress]
 
+  # Etapa 7: agendador que repete scans vencidos. Só lê o banco e publica na fila (sem alvo).
+  worker-recurrence:
+    <<: *worker
+    command: ["python", "-m", "scanner.recurrence"]
+    environment:
+      CONSUMER_NAME: worker-recurrence-1
+    networks: [internal]
+
   # Interface web: única porta publicada. Em produção fica atrás de um proxy reverso com TLS.
   web:
     <<: *worker
