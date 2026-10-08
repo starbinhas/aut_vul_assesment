@@ -108,6 +108,24 @@ class RemediationCache(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class CrawlMemory(Base):
+    """Memória de rastreio por alvo: as URLs já descobertas em scans anteriores.
+
+    Semeadas no início do próximo scan (etapa 4), para a cobertura ser monotônica — um site
+    raramente encolhe, então o scan de hoje começa do que já conhecíamos e só acrescenta. Uma
+    linha por alvo; `routes` é a união acumulada (limitada por `crawl_memory_max_routes`).
+    """
+
+    __tablename__ = "crawl_memory"
+
+    target_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    routes: Mapped[list[str]] = mapped_column(JsonType, default=list)
+    scan_id: Mapped[str | None] = mapped_column(String(64), nullable=True)  # último que atualizou
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class ScanStatus:
     REQUESTED = "requested"
     RECON = "recon"
@@ -192,6 +210,31 @@ def set_pages_crawled(sessions, scan_id: str, pages: int) -> None:  # type: igno
         scan = session.get(Scan, scan_id)
         if scan is not None:
             scan.pages_crawled = pages
+
+
+def get_known_routes(sessions, target_id: str) -> list[str]:  # type: ignore[no-untyped-def]
+    """URLs já descobertas em scans anteriores deste alvo (vazio se for o primeiro)."""
+    with sessions() as session:
+        mem = session.get(CrawlMemory, target_id)
+        return list(mem.routes) if mem is not None else []
+
+
+def remember_routes(  # type: ignore[no-untyped-def]
+    sessions, target_id: str, scan_id: str, routes: list[str], max_routes: int = 2000
+) -> None:
+    """Acumula as URLs rastreadas na memória do alvo (união com o que já havia).
+
+    Monotônico: só cresce. Ordenado e limitado a `max_routes` para não inchar a linha nem a
+    próxima semeadura. Idempotente: reprocessar o mesmo scan não muda o conjunto.
+    """
+    with sessions.begin() as session:
+        mem = session.get(CrawlMemory, target_id)
+        merged = sorted(set(routes) if mem is None else set(mem.routes) | set(routes))[:max_routes]
+        if mem is None:
+            session.add(CrawlMemory(target_id=target_id, routes=merged, scan_id=scan_id))
+        else:
+            mem.routes = merged
+            mem.scan_id = scan_id
 
 
 def set_scan_status(

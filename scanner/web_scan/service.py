@@ -11,7 +11,13 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from scanner.common.authz import UnauthorizedScanError, check_authorized
 from scanner.common.config import Settings
-from scanner.common.db import ScanStatus, set_pages_crawled, set_scan_status
+from scanner.common.db import (
+    ScanStatus,
+    get_known_routes,
+    remember_routes,
+    set_pages_crawled,
+    set_scan_status,
+)
 from scanner.common.models import Finding, StageMessage
 from scanner.common.queue import STREAM_CANDIDATES, make_message, publish
 from scanner.common.scope import ScopeGuard
@@ -75,7 +81,7 @@ def run_scan(
     scope_routes: list[str],
     credential: HeaderCredential | LoginCredential | None,
     profile: ScanProfile,
-    on_crawl_done: Callable[[int], None] | None = None,
+    on_crawl_done: Callable[[list[str]], None] | None = None,
 ) -> list[Finding]:
     guard = ScopeGuard(msg.scope)
     zap.start_session(msg.scan_id)
@@ -97,9 +103,12 @@ def run_scan(
             zap.ajax_spider(base, context_name)
         zap.passive_scan()
         # Cobertura medida AQUI (fim do rastreio, antes do ativo): o scan ativo gera muitas URLs
-        # de teste e inflaria a conta. Isto mede o que o rastreio realmente alcançou.
+        # de teste e inflaria a conta. Isto mede (e memoriza) o que o rastreio realmente alcançou.
         if on_crawl_done is not None:
-            on_crawl_done(sum(zap.crawled_count(base) for base in msg.scope.base_urls))
+            crawled: list[str] = []
+            for base in msg.scope.base_urls:
+                crawled.extend(zap.crawled_urls(base))
+            on_crawl_done(crawled)
         for base in msg.scope.base_urls:
             zap.active_scan(base, context_id)
     except ScanTimeoutError as exc:
@@ -183,18 +192,32 @@ def handle(
         limits,
         on_progress=progress,
     )
-    def on_crawl_done(pages: int) -> None:
-        # Portão de cobertura: grava o que o rastreio alcançou e avisa se saiu raso.
-        set_pages_crawled(sessions, msg.scan_id, pages)
-        if pages < settings.coverage_min_pages:
-            log.warning("cobertura possivelmente parcial", extra={"pages_crawled": pages})
 
+    def on_crawl_done(urls: list[str]) -> None:
+        # Portão de cobertura: grava o que o rastreio alcançou e avisa se saiu raso.
+        set_pages_crawled(sessions, msg.scan_id, len(urls))
+        if len(urls) < settings.coverage_min_pages:
+            log.warning("cobertura possivelmente parcial", extra={"pages_crawled": len(urls)})
+        # Memória de rastreio: acumula as URLs neste alvo para semear o próximo scan.
+        remember_routes(
+            sessions, msg.target_id, msg.scan_id, urls, settings.crawl_memory_max_routes
+        )
+
+    # Semeadura: rotas da mensagem (sitemap/robots da etapa 2) + memória dos scans anteriores.
+    # O ScopeGuard em run_scan descarta qualquer rota fora do escopo atual.
+    seed_routes = sorted(
+        set(msg.payload.get("routes", [])) | set(get_known_routes(sessions, msg.target_id))
+    )
+    log.info(
+        "semeadura de rotas",
+        extra={"from_message": len(msg.payload.get("routes", [])), "total": len(seed_routes)},
+    )
     progress("starting")
     try:
         findings = run_scan(
             zap,
             msg,
-            msg.payload.get("routes", []),
+            seed_routes,
             _credential(msg.payload),
             profile,
             on_crawl_done=on_crawl_done,
