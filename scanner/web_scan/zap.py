@@ -40,11 +40,15 @@ def _scan_id(result: Any, what: str) -> str:
     return str(result)
 
 
+AJAX_MIN_EXPECTED = 20  # abaixo disso, o mapeamento do SPA provavelmente falhou
+
+
 @dataclass
 class ScanLimits:
     max_duration_minutes: int
     threads_per_host: int
     max_requests_per_second: int
+    ajax_browsers: int = 1  # navegadores paralelos do AJAX spider (mais mapeia, mais RAM)
 
 
 @dataclass
@@ -154,8 +158,17 @@ class ZapScanner:
         settings = [
             ("spider threads", self.zap.spider.set_option_thread_count(threads)),
             ("spider duração", self.zap.spider.set_option_max_duration(max(1, minutes // 4))),
-            ("ajax duração", self.zap.ajaxSpider.set_option_max_duration(max(1, minutes // 4))),
-            ("ajax browsers", self.zap.ajaxSpider.set_option_number_of_browsers(1)),
+            # AJAX spider endurecido: mais tempo, mais navegadores e ESPERA para o site em
+            # JavaScript (SPA) terminar de renderizar antes de coletar os links — sem isso o
+            # mapeamento de sites como o Juice Shop sai curto e varia de uma execução para outra.
+            ("ajax duração", self.zap.ajaxSpider.set_option_max_duration(max(2, minutes // 2))),
+            (
+                "ajax browsers",
+                self.zap.ajaxSpider.set_option_number_of_browsers(self.limits.ajax_browsers),
+            ),
+            ("ajax profundidade", self.zap.ajaxSpider.set_option_max_crawl_depth(10)),
+            ("ajax espera recarga", self.zap.ajaxSpider.set_option_reload_wait(3000)),
+            ("ajax espera evento", self.zap.ajaxSpider.set_option_event_wait(1500)),
             ("ascan threads", self.zap.ascan.set_option_thread_per_host(threads)),
             ("ascan delay", self.zap.ascan.set_option_delay_in_ms(delay_ms)),
             ("ascan duração", self.zap.ascan.set_option_max_scan_duration_in_mins(minutes)),

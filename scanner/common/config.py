@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     scan_lab_max_duration_minutes: int = Field(default=60, ge=1)
     scan_lab_threads_per_host: int = Field(default=10, ge=1, le=40)
     scan_lab_max_requests_per_second: int = Field(default=100, ge=1, le=500)
+    # Navegadores do AJAX spider (mapeamento de sites JavaScript). Laboratório pode usar mais.
+    scan_ajax_browsers: int = Field(default=1, ge=1, le=8)
+    scan_lab_ajax_browsers: int = Field(default=4, ge=1, le=16)
     # O perfil agressivo (testes que podem causar dano) só roda contra estes hosts.
     # Site de cliente nunca está aqui: a trava garante que o agressivo não o atinge.
     lab_hosts: list[str] = ["juice-shop", "dvwa", "localhost", "127.0.0.1"]

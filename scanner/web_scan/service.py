@@ -58,11 +58,13 @@ def resolve_limits(hosts: list[str], settings: Settings) -> ScanLimits:
             settings.scan_lab_max_duration_minutes,
             settings.scan_lab_threads_per_host,
             settings.scan_lab_max_requests_per_second,
+            settings.scan_lab_ajax_browsers,
         )
     return ScanLimits(
         settings.scan_max_duration_minutes,
         settings.scan_threads_per_host,
         settings.scan_max_requests_per_second,
+        settings.scan_ajax_browsers,
     )
 
 
