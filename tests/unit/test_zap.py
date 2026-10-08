@@ -175,3 +175,79 @@ def test_set_credential_is_idempotent_across_scans() -> None:
     z.set_credential(cred)
     z.set_credential(cred)  # segundo scan na mesma instância do ZAP: não pode falhar
     assert z.zap.replacer.rules == {ZapScanner.CREDENTIAL_RULE}
+
+
+# --- prontidão do alvo (readiness) -------------------------------------------------------
+
+from scanner.web_scan.zap import (  # noqa: E402
+    TargetNotReadyError,
+    build_get_request,
+    response_status,
+)
+
+
+def test_response_status_parses_status_line() -> None:
+    assert response_status([{"responseHeader": "HTTP/1.1 200 OK\r\nServer: x"}]) == 200
+    assert response_status([{"responseHeader": "HTTP/1.1 503 Service Unavailable\r\n"}]) == 503
+    assert response_status({"responseHeader": "HTTP/1.1 301 Moved\n"}) == 301
+
+
+def test_response_status_handles_no_response() -> None:
+    assert response_status("mode_violation") is None  # ZAP devolve texto em erro
+    assert response_status([]) is None
+    assert response_status([{"responseHeader": ""}]) is None
+
+
+def test_build_get_request_has_host() -> None:
+    req = build_get_request("http://juice-shop:3000/")
+    assert req.startswith("GET http://juice-shop:3000/ HTTP/1.1\r\n")
+    assert "Host: juice-shop:3000\r\n" in req
+
+
+class FakeCore:
+    """send_request devolve, em sequência, cada resposta de `responses`."""
+
+    def __init__(self, responses: list[object]) -> None:
+        self.responses = list(responses)
+        self.calls = 0
+
+    def send_request(self, request, followredirects=False):
+        self.calls += 1
+        item = self.responses.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+
+def scanner_with_core(responses: list[object]) -> ZapScanner:
+    z = ZapScanner.__new__(ZapScanner)
+    z.limits = ScanLimits(10, 1, 5)
+    z.on_progress = None
+    z.zap = SimpleNamespace(core=FakeCore(responses))
+    return z
+
+
+def test_wait_until_ready_returns_on_first_good_status() -> None:
+    z = scanner_with_core([[{"responseHeader": "HTTP/1.1 200 OK\r\n"}]])
+    assert z.wait_until_ready("http://t/", attempts=3, delay_s=0) == 200
+    assert z.zap.core.calls == 1
+
+
+def test_wait_until_ready_retries_through_cold_start() -> None:
+    # Duas falhas (conexão recusada / 503) e então sobe.
+    z = scanner_with_core(
+        [
+            ConnectionError("refused"),
+            [{"responseHeader": "HTTP/1.1 503 Service Unavailable\r\n"}],
+            [{"responseHeader": "HTTP/1.1 200 OK\r\n"}],
+        ]
+    )
+    assert z.wait_until_ready("http://t/", attempts=5, delay_s=0) == 200
+    assert z.zap.core.calls == 3
+
+
+def test_wait_until_ready_raises_when_never_up() -> None:
+    z = scanner_with_core([ConnectionError("refused")] * 3)
+    with pytest.raises(TargetNotReadyError):
+        z.wait_until_ready("http://t/", attempts=3, delay_s=0)
+    assert z.zap.core.calls == 3

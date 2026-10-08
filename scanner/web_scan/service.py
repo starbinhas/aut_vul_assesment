@@ -29,6 +29,7 @@ from scanner.web_scan.zap import (
     LoginCredential,
     ScanLimits,
     ScanTimeoutError,
+    TargetNotReadyError,
     ZapScanner,
 )
 
@@ -82,12 +83,18 @@ def run_scan(
     credential: HeaderCredential | LoginCredential | None,
     profile: ScanProfile,
     on_crawl_done: Callable[[list[str]], None] | None = None,
+    readiness_attempts: int = 10,
+    readiness_delay_s: float = 3.0,
 ) -> list[Finding]:
     guard = ScopeGuard(msg.scope)
     zap.start_session(msg.scan_id)
     context_name, context_id = zap.create_context(msg.scan_id, msg.scope)
     zap.configure_limits()
     zap.configure_policy(profile)
+    # Prontidão: confirma que o alvo responde antes de qualquer login/rastreio (evita 'alvo frio').
+    # Erra para fora de run_scan (não é ScanTimeout): o handler decide re-tentar via fila.
+    for base in msg.scope.base_urls:
+        zap.wait_until_ready(base, readiness_attempts, readiness_delay_s)
     if isinstance(credential, LoginCredential):
         # Login do tipo "login": o ZAP autentica e nos devolve o cabeçalho com o token.
         credential = zap.login(credential)
@@ -221,7 +228,15 @@ def handle(
             _credential(msg.payload),
             profile,
             on_crawl_done=on_crawl_done,
+            readiness_attempts=settings.readiness_attempts,
+            readiness_delay_s=settings.readiness_delay_seconds,
         )
+    except TargetNotReadyError as exc:
+        # Alvo fora do ar: não rastreia vazio. Sem ack -> a fila re-tenta mais tarde (o alvo pode
+        # subir); após o limite de entregas, o give-up marca o scan como falho.
+        log.warning("alvo não respondeu; adiando", extra={"error": str(exc)})
+        set_scan_status(sessions, msg.scan_id, ScanStatus.WEB_SCANNING, "target-unreachable")
+        raise
     except Exception:
         set_scan_status(sessions, msg.scan_id, ScanStatus.WEB_SCANNING, "retrying")
         raise

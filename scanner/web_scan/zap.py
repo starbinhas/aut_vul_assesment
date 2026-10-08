@@ -25,6 +25,10 @@ class ScanTimeoutError(Exception):
     pass
 
 
+class TargetNotReadyError(Exception):
+    """O alvo não respondeu a tempo. Rastrear um site fora do ar sai vazio e engana a cobertura."""
+
+
 class ZapError(Exception):
     """O ZAP recusou um comando. O cliente `zaproxy` devolve o erro como texto, sem exceção."""
 
@@ -88,6 +92,26 @@ def extract_token(body: dict[str, Any], path: tuple[str, ...]) -> str:
     if not isinstance(cur, str) or not cur:
         raise ZapError("token de login vazio ou não é texto")
     return cur
+
+
+def build_get_request(url: str) -> str:
+    """Requisição GET crua para o ZAP enviar (sondagem de prontidão do alvo)."""
+    host = urlsplit(url).netloc
+    return f"GET {url} HTTP/1.1\r\nHost: {host}\r\nAccept: */*\r\n\r\n"
+
+
+def response_status(sent: Any) -> int | None:
+    """Código HTTP da resposta de core.send_request, ou None se não houver resposta.
+
+    Em erro o ZAP devolve uma string (ex.: 'mode_violation'); nesses casos não há status.
+    """
+    msg = sent[-1] if isinstance(sent, list) and sent else sent
+    if not isinstance(msg, dict):
+        return None
+    header = str(msg.get("responseHeader", ""))
+    first_line = header.replace("\r\n", "\n").split("\n", 1)[0]
+    parts = first_line.split()
+    return int(parts[1]) if len(parts) >= 2 and parts[1].isdigit() else None
 
 
 def build_login_request(spec: LoginCredential) -> str:
@@ -282,6 +306,34 @@ class ZapScanner:
                 raise ScanTimeoutError(f"tempo máximo do scan estourado em: {label}")
             time.sleep(POLL_SECONDS)
         log.info("fase concluída", extra={"phase": label})
+
+    def wait_until_ready(self, url: str, attempts: int, delay_s: float) -> int:
+        """Confirma (pelo ZAP) que o alvo responde antes de rastrear — evita o 'alvo frio'.
+
+        Reenvia um GET até obter uma resposta HTTP abaixo de 500 ou esgotar as tentativas; de
+        passagem, aquece o site (caches/JS) para o rastreio render mais e variar menos. Levanta
+        `TargetNotReadyError` se o alvo nunca responder — melhor falhar claro do que rastrear vazio.
+        """
+        last: object = "sem resposta"
+        for attempt in range(1, attempts + 1):
+            try:
+                sent = self.zap.core.send_request(build_get_request(url), followredirects=True)
+                status = response_status(sent)
+                if status is not None and status < 500:
+                    log.info(
+                        "alvo pronto", extra={"url": url, "status": status, "attempt": attempt}
+                    )
+                    return status
+                last = status if status is not None else "sem resposta"
+            except Exception as exc:  # conexão recusada, DNS, etc.: o alvo ainda não subiu
+                last = type(exc).__name__
+            if self.on_progress:
+                self.on_progress("readiness", None, f"aguardando o alvo ({attempt}/{attempts})")
+            if attempt < attempts:
+                time.sleep(delay_s)
+        raise TargetNotReadyError(
+            f"alvo {url} não respondeu após {attempts} tentativas (último: {last})"
+        )
 
     def spider(self, url: str, context_name: str) -> None:
         scan = _scan_id(

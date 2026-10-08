@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     coverage_min_pages: int = Field(default=15, ge=1)
     # Memória de rastreio: teto de URLs guardadas por alvo e semeadas no próximo scan.
     crawl_memory_max_routes: int = Field(default=2000, ge=1)
+    # Prontidão do alvo: sondas (pelo ZAP) antes de rastrear, para não mapear um site frio/caído.
+    readiness_attempts: int = Field(default=10, ge=1)
+    readiness_delay_seconds: float = Field(default=3.0, ge=0)
     # O perfil agressivo (testes que podem causar dano) só roda contra estes hosts.
     # Site de cliente nunca está aqui: a trava garante que o agressivo não o atinge.
     lab_hosts: list[str] = ["juice-shop", "dvwa", "localhost", "127.0.0.1"]
