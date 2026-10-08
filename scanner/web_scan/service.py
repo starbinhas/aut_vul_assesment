@@ -95,6 +95,17 @@ STOPPED = "stopped"  # operador pediu para entregar o parcial agora
 GAVE_UP = "gave_up"  # estourou o tempo de espera -> entrega o parcial
 
 
+def partial_reason_for(outcome: str, destructive: bool) -> str:
+    """Por que o scan virou parcial — para a interface explicar a causa, não só o fato.
+
+    Distingue o alvo derrubado PELO nosso teste agressivo (esperado nesse perfil) do alvo que
+    caiu por conta própria; e da parada pedida pelo operador. Vira texto na interface.
+    """
+    if outcome == STOPPED:
+        return "operator-stopped"
+    return "aggressive-dos" if destructive else "target-unstable"
+
+
 def wait_for_target_recovery(
     zap: ZapScanner,
     base_urls: list[str],
@@ -223,7 +234,7 @@ def run_scan(
                 log.info("alvo voltou; retomando o scan ativo")
             else:
                 partial = True
-                reason = "operator-stopped" if outcome == STOPPED else "target-unstable"
+                reason = partial_reason_for(outcome, profile.destructive)
                 log.warning("entregando parcial (alvo instável)", extra={"reason": reason})
                 if on_partial is not None:
                     on_partial(reason)

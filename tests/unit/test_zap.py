@@ -259,8 +259,17 @@ from scanner.web_scan.service import (  # noqa: E402
     GAVE_UP,
     RECOVERED,
     STOPPED,
+    partial_reason_for,
     wait_for_target_recovery,
 )
+
+
+def test_partial_reason_distinguishes_cause() -> None:
+    # Agressivo derrubou o alvo (esperado) vs. alvo instável sozinho vs. operador parou.
+    assert partial_reason_for(GAVE_UP, destructive=True) == "aggressive-dos"
+    assert partial_reason_for(GAVE_UP, destructive=False) == "target-unstable"
+    assert partial_reason_for(STOPPED, destructive=True) == "operator-stopped"
+    assert partial_reason_for(STOPPED, destructive=False) == "operator-stopped"
 
 
 class FakeZapUp:

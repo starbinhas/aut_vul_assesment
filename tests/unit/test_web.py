@@ -649,3 +649,12 @@ def test_stop_requires_csrf(env) -> None:
     assert r.status_code == 403
     with sessions() as s:
         assert s.get(Scan, "scan-a").stop_requested_at is None
+
+
+def test_partial_reason_label_explains_aggressive() -> None:
+    from scanner.web import labels
+
+    agg = labels.partial_reason("aggressive-dos")
+    assert "agressivo" in agg.lower() and "Completo seguro" in agg
+    assert labels.partial_reason("target-unstable") != agg
+    assert labels.partial_reason("")  # fallback não vazio

@@ -131,6 +131,7 @@ TEMPLATES.env.filters.update(
     audit=labels.audit_action,
     sentence=labels.sentence,
     reason=labels.reason,
+    partial_reason=labels.partial_reason,
     name=display_title,
 )
 TEMPLATES.env.globals["scan_eta"] = scan_eta

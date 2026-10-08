@@ -99,6 +99,26 @@ def is_command(value: object) -> bool:
     return names.is_command(value)
 
 
+PARTIAL_REASON = {
+    "aggressive-dos": (
+        "O teste agressivo sobrecarregou o site e ele saiu do ar — isso é esperado nesse nível "
+        "(ele pesa como um ataque de negação de serviço). Para um teste completo sem derrubar o "
+        "site, use o perfil “Completo seguro”."
+    ),
+    "target-unstable": (
+        "O site saiu do ar sozinho durante o teste (instabilidade do próprio alvo), e o scan "
+        "esperou sem ele voltar a tempo."
+    ),
+    "operator-stopped": (
+        "Você parou a espera e pediu o relatório parcial antes de o teste ativo terminar."
+    ),
+}
+
+
+def partial_reason(value: object) -> str:
+    return PARTIAL_REASON.get(str(value or ""), "O teste ativo não foi concluído.")
+
+
 def reason(value: object) -> str:
     return sentence(names.client_reason(str(value or "")))
 
