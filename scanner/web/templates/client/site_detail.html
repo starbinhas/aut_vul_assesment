@@ -153,7 +153,7 @@
     <input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}">
     <label class="field">
       <span>Endereço de login <span class="faint">(onde o site recebe usuário e senha)</span></span>
-      <input type="url" name="login_url" value="{{ auth_config.login_url if auth_config else '' }}" placeholder="https://seusite.com/api/login">
+      <input type="text" inputmode="url" name="login_url" value="{{ auth_config.login_url if auth_config else '' }}" placeholder="https://seusite.com/api/login">
     </label>
     <label class="field">
       <span>E-mail do usuário de teste</span>
