@@ -5,10 +5,14 @@
 services:
   juice-shop:
     image: bkimminich/juice-shop:latest
+    # O Juice Shop cai (segfault, exit 139) sob carga de scan. Com restart, ele volta sozinho e
+    # o worker retoma a busca de onde parou (prontidão + espera de recuperação da etapa 4).
+    restart: unless-stopped
     networks: [lab]
 
   dvwa:
     image: vulnerables/web-dvwa:latest
+    restart: unless-stopped
     networks: [lab]
 
   zap:
