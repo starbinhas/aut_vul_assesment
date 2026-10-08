@@ -713,7 +713,7 @@ def test_manual_review_rejects_unknown_check_or_state(env) -> None:
 
 
 def test_client_cannot_review_other_org_scan(env) -> None:
-    app, sessions, _ = env
+    app, _sessions, _ = env
     c = login(app, "ana@loja-a.test")
     r = c.post(
         "/scans/scan-b/revisao/A09-login",
