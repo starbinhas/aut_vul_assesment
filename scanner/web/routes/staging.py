@@ -40,6 +40,10 @@ def _wizard(
     org = db.get(Organization, production.org_id)
     days = (form or {}).get("days") or (row.valid_days if row and row.valid_days else 30)
     step = staging.step_of(row, copy)
+    # Nível escolhido na tela (link `?nivel=` ou re-render de erro). Só o cliente decide; o padrão
+    # é o intrusivo. O `stress` (resiliência/DoS) pede o checklist e o termo mais fortes.
+    chosen = (form or {}).get("level") or request.query_params.get("nivel")
+    level = chosen if chosen in (rules.INTRUSIVE, rules.STRESS) else rules.INTRUSIVE
     return render(
         request,
         "staging/wizard.html",
@@ -50,13 +54,18 @@ def _wizard(
         row=row,
         copy=copy,
         step=step,
+        level=level,
         expired=bool(row and rules.is_expired(row)),
         checks=staging.automatic_checks(copy, production) if copy and step >= 3 else [],
-        checklist=staging.CHECKLIST,
+        checklist=staging.checklist_for(level),
         optional=staging.OPTIONAL,
         validity=rules.VALIDITY_DAYS,
-        term=staging.term_paragraphs(
-            org.name if org else "", production.domain, copy.domain if copy else "", int(days)
+        term=staging.term_for(
+            level,
+            org.name if org else "",
+            production.domain,
+            copy.domain if copy else "",
+            int(days),
         ),
         dev_message=staging.developer_message(production),
         dns_message=staging.dns_message(copy) if copy else "",
@@ -127,6 +136,7 @@ async def sign(
     form = await request.form()
     confirmed = {str(v) for v in form.getlist("confirm")}
     values = {k: str(form.get(k, "")) for k in ("signer_name", "signer_role", "contact", "days")}
+    level = rules.STRESS if form.get("level") == rules.STRESS else rules.INTRUSIVE
     try:
         days = int(values["days"] or 0)
     except ValueError:
@@ -145,6 +155,7 @@ async def sign(
             days=days,
             accepted=form.get("accept") == "yes",
             ip=request.client.host if request.client else None,
+            level=level,
         )
     except staging.StagingError as exc:
         return _wizard(
@@ -153,7 +164,7 @@ async def sign(
             db,
             production,
             error=str(exc),
-            form=values | {"confirmed": confirmed, "days": days or None},
+            form=values | {"confirmed": confirmed, "days": days or None, "level": level},
             status_code=400,
         )
     return RedirectResponse(f"/sites/{production.target_id}/copia-de-teste#passo", 303)
@@ -223,6 +234,8 @@ def _review_rows(db: Session) -> list[dict[str, Any]]:
                 "signer_email": signer.email if signer else None,
                 "expired": rules.is_expired(row),
                 "active": rules.is_active(row),
+                # O checklist que o cliente viu depende do nível assinado (stress tem mais itens).
+                "checklist": staging.checklist_for(row.scope_level),
                 # DNS só para o que está esperando decisão (a lista não espera o DNS de todos).
                 "checks": staging.automatic_checks(copy, production)
                 if row.status == rules.REQUESTED
@@ -246,7 +259,6 @@ def review_list(
         viewer,
         db,
         items=_review_rows(db),
-        checklist=staging.CHECKLIST,
         error=error,
     )
 

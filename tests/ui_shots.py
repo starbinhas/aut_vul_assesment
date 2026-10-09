@@ -38,6 +38,8 @@ CLIENT_PAGES = [
     ("scan", "{scan}"),
     ("scan-item", "{scan}"),
     ("relatorio", "{scan}/relatorio.html"),
+    ("copia-de-teste", "{copia}"),
+    ("copia-resiliencia", "{copia}?nivel=stress"),
     ("conta", "/conta"),
 ]
 # Capturas de um elemento aberto, não da página: o item de falha expandido (com o recibo da
@@ -51,12 +53,15 @@ ADMIN_PAGES = [
     ("admin-fila", "/admin/operacao"),
     ("admin-auditoria", "/admin/auditoria"),
     ("admin-equipe", "/admin/equipe"),
+    ("admin-copias", "/admin/copias-de-teste"),
 ]
-# Onde procurar o primeiro link de cada caminho dinâmico.
+# Onde procurar o primeiro link de cada caminho dinâmico. A origem pode ser outra dinâmica
+# (ex.: a cópia de teste só é linkada na página do site), resolvida por `found`.
 DISCOVER = {
     "site": ("/sites", r"^/sites/(?!novo)[^/#?]+$"),
     "scan": ("/painel", r"^/scans/[^/#?]+$"),
     "org": ("/admin/clientes", r"^/admin/clientes/[^/#?]+$"),
+    "copia": ("{site}", r"^/sites/[^/#?]+/copia-de-teste$"),
 }
 
 
@@ -89,8 +94,13 @@ def _login(page: Page, base: str, email: str, password: str) -> None:
         sys.exit("login falhou (confira UI_SHOTS_EMAIL / UI_SHOTS_PASSWORD)")
 
 
-def _discover(page: Page, base: str, key: str) -> str | None:
+def _discover(page: Page, base: str, key: str, found: dict[str, str | None]) -> str | None:
     source, pattern = DISCOVER[key]
+    if source.startswith("{"):  # origem dinâmica (ex.: a cópia só é linkada na página do site)
+        dep, _, suffix = source[1:].partition("}")
+        if found.get(dep) is None:
+            return None
+        source = found[dep] + suffix
     page.goto(f"{base}{source}")
     for href in page.eval_on_selector_all("a[href]", "els => els.map(e => e.getAttribute('href'))"):
         path = (href or "").split("#")[0]
@@ -173,7 +183,7 @@ def run(
                 if path.startswith("{"):
                     key, _, suffix = path[1:].partition("}")
                     if key not in found:
-                        found[key] = _discover(nav, base, key)
+                        found[key] = _discover(nav, base, key, found)
                     if not found[key]:
                         print(f"pulada: {name} (nenhum link para {key})")
                         continue

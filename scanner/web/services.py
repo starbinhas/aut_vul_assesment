@@ -44,7 +44,7 @@ from scanner.common.queue import (
     STREAM_WEB_REQUESTED,
 )
 from scanner.common.scope import scope_for
-from scanner.common.staging import staging_cleared
+from scanner.common.staging import staging_cleared, stress_cleared
 from scanner.report.models import Report as ReportModel
 from scanner.report.models import ReportItem
 from scanner.web.tenancy import Viewer
@@ -97,17 +97,26 @@ def active_scan(session: Session, target_id: str) -> Scan | None:
 
 
 def profiles_for(
-    viewer: Viewer, target: Target, lab_hosts: list[str], staging: bool = False
+    viewer: Viewer,
+    target: Target,
+    lab_hosts: list[str],
+    staging: bool = False,
+    stress: bool = False,
 ) -> list[policy.ScanProfile]:
     """Perfis que esta pessoa pode pedir para este site.
 
-    Os que não gravam dados, para todos. O intrusivo só numa cópia de teste com autorização
-    vigente (`staging`, de `common.staging.staging_cleared`), para quem é da organização. O
-    agressivo (e o intrusivo no laboratório) só para admin E só em site de laboratório: a interface
-    é por onde o cliente aponta o scanner para produção, e lá eles nunca aparecem.
+    Os que não gravam dados, para todos. O intrusivo só numa cópia liberada para o intrusivo
+    (`staging`), para quem é da organização. O agressivo só numa cópia liberada para resiliência
+    (`stress`, de `common.staging.stress_cleared`). O laboratório libera tudo, só para admin: a
+    interface é por onde o cliente aponta o scanner para produção, e lá o agressivo nunca aparece
+    fora de uma cópia liberada.
     """
     lab = viewer.is_admin and policy.is_lab_scope(scope_for(target).allowed_hosts, lab_hosts)
-    return [p for p in policy.PROFILES.values() if policy.is_cleared(p, lab=lab, staging=staging)]
+    return [
+        p
+        for p in policy.PROFILES.values()
+        if policy.is_cleared(p, lab=lab, staging=staging, stress=stress)
+    ]
 
 
 def start_scan(
@@ -135,7 +144,8 @@ def start_scan(
     requested = policy.resolve(profile)
     scope = scope_for(target)
     staging = staging_cleared(session, target.target_id, scope.allowed_hosts)
-    if requested not in profiles_for(viewer, target, lab_hosts, staging):
+    stress = stress_cleared(session, target.target_id, scope.allowed_hosts)
+    if requested not in profiles_for(viewer, target, lab_hosts, staging, stress):
         raise ScanNotAllowedError(
             "perfil-nao-permitido", "Esse nível de scan não está liberado para este site."
         )

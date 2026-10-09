@@ -74,6 +74,36 @@ CHECKLIST: list[tuple[str, str, str]] = [
 ]
 OPTIONAL = frozenset({"fake_personal_data"})
 
+# Nível `stress` (resiliência/DoS): tudo do intrusivo MAIS o que só importa quando o teste pode
+# derrubar a cópia. Infra separada e aceite de indisponibilidade são obrigatórios aqui.
+STRESS_EXTRA_CHECKLIST: list[tuple[str, str, str]] = [
+    (
+        "isolated_infra",
+        "A cópia está em servidor separado: não divide servidor, balanceador, CDN nem IP com o "
+        "site oficial.",
+        "O teste de sobrecarga pode derrubar o servidor da cópia. Se a infra for compartilhada, o "
+        "site oficial (ou de terceiros no mesmo servidor) cai junto.",
+    ),
+    (
+        "accept_downtime",
+        "Autorizo que a cópia fique fora do ar durante o teste.",
+        "O teste de resiliência tenta derrubar o serviço de propósito: é esperado que a cópia "
+        "fique instável ou saia do ar.",
+    ),
+    (
+        "disposable_rebuild",
+        "Consigo recriar ou reiniciar a cópia se ela não voltar sozinha.",
+        "Depois de uma sobrecarga, o servidor pode não subir de novo sem reiniciar ou refazer o "
+        "deploy.",
+    ),
+]
+STRESS_CHECKLIST: list[tuple[str, str, str]] = CHECKLIST + STRESS_EXTRA_CHECKLIST
+
+
+def checklist_for(level: str) -> list[tuple[str, str, str]]:
+    """O checklist do nível pedido. `stress` acrescenta os itens de infra e indisponibilidade."""
+    return STRESS_CHECKLIST if level == rules.STRESS else CHECKLIST
+
 
 def term_paragraphs(org: str, production_host: str, staging_host: str, days: int) -> list[str]:
     return [
@@ -89,6 +119,29 @@ def term_paragraphs(org: str, production_host: str, staging_host: str, days: int
         "que as confirmações acima são verdadeiras e que pode encerrar a autorização a qualquer "
         "momento por esta página.",
     ]
+
+
+def stress_term_paragraphs(
+    org: str, production_host: str, staging_host: str, days: int
+) -> list[str]:
+    return [
+        f"{org} autoriza a Pitchy a fazer o teste de resiliência em {staging_host}, cópia de teste "
+        f"do site {production_host}, por {days} dias a partir da aprovação do time.",
+        "Além de tudo do teste intrusivo (gravar dados na cópia e fazer o servidor acessar "
+        "endereços externos), o teste de resiliência inclui testes de SOBRECARGA que tentam "
+        "derrubar o servidor. É esperado que a cópia fique instável ou fora do ar durante o teste.",
+        f"O teste fica restrito a {staging_host}: nunca acessa {production_host} nem outro "
+        "endereço. A cópia precisa estar em infraestrutura separada do site oficial, para que uma "
+        "queda não atinja o site de verdade.",
+        "Quem assina declara que responde por esses sites (ou foi autorizado por quem responde), "
+        "que a cópia pode ficar fora do ar sem prejuízo a pessoas reais e que pode encerrar a "
+        "autorização a qualquer momento por esta página.",
+    ]
+
+
+def term_for(level: str, org: str, production_host: str, staging_host: str, days: int) -> list[str]:
+    builder = stress_term_paragraphs if level == rules.STRESS else term_paragraphs
+    return builder(org, production_host, staging_host, days)
 
 
 def term_digest(paragraphs: list[str]) -> str:
@@ -210,6 +263,7 @@ def _new_row(production: Target, staging: Target, viewer: Viewer) -> StagingAuth
         staging_target_id=staging.target_id,
         staging_host=scope_for(staging).allowed_hosts[0].lower(),  # o mesmo host do escopo
         status=rules.DRAFT,
+        scope_level=rules.INTRUSIVE,  # o nível (intrusivo/resiliência) é escolhido ao assinar
         checklist={},
         created_by=viewer.user_id,
         created_at=datetime.now(UTC),
@@ -304,15 +358,23 @@ def sign(
     days: int,
     accepted: bool,
     ip: str | None,
+    level: str = rules.INTRUSIVE,
 ) -> None:
-    """Passo 3: checklist + termo. Só quem é da organização assina (o admin não assina por ela)."""
+    """Passo 3: checklist + termo. Só quem é da organização assina (o admin não assina por ela).
+
+    `level` escolhe o alcance: `intrusive` (padrão) ou `stress` (resiliência/DoS), que pede o
+    checklist e o termo mais fortes e, aprovado, é o único que libera o perfil agressivo.
+    """
     if viewer.is_admin or viewer.org_id != row.org_id:
         raise StagingError("Quem assina é alguém da empresa dona do site, não o time da Pitchy.")
+    if level not in (rules.INTRUSIVE, rules.STRESS):
+        raise StagingError("Nível de autorização inválido.")
     if row.status not in (rules.DRAFT, rules.REJECTED):
         raise StagingError("Este pedido já foi assinado.")
     if staging.verified_at is None:
         raise StagingError("Comprove o domínio da cópia antes de assinar.")
-    missing = [text for key, text, _ in CHECKLIST if key not in OPTIONAL and key not in confirmed]
+    checklist = checklist_for(level)
+    missing = [text for key, text, _ in checklist if key not in OPTIONAL and key not in confirmed]
     if missing:
         raise StagingError(f"Falta confirmar: {missing[0]}")
     signer_name, signer_role = signer_name.strip(), signer_role.strip()
@@ -328,8 +390,9 @@ def sign(
     if not accepted:
         raise StagingError("Marque que leu e autoriza o teste.")
     org = session.get(Organization, row.org_id)
-    paragraphs = term_paragraphs(org.name if org else "", production.domain, staging.domain, days)
-    row.checklist = {key: key in confirmed for key, _, _ in CHECKLIST}
+    paragraphs = term_for(level, org.name if org else "", production.domain, staging.domain, days)
+    row.checklist = {key: key in confirmed for key, _, _ in checklist}
+    row.scope_level = level
     row.term_version = TERM_VERSION
     row.term_sha256 = term_digest(paragraphs)
     row.signer_name = signer_name[:200]
@@ -349,6 +412,7 @@ def sign(
         object_type="staging",
         object_id=row.auth_id,
         copy=staging.domain,
+        level=level,
         term_version=TERM_VERSION,
         term_sha256=row.term_sha256,
         days=days,

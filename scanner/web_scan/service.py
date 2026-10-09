@@ -15,6 +15,7 @@ from scanner.common.authz import UnauthorizedScanError, check_authorized
 from scanner.common.config import Settings
 from scanner.common.db import (
     ScanStatus,
+    canonical_routes,
     get_known_routes,
     is_stop_requested,
     last_pages_crawled,
@@ -26,7 +27,7 @@ from scanner.common.db import (
 from scanner.common.models import Finding, StageMessage
 from scanner.common.queue import STREAM_CANDIDATES, make_message, publish
 from scanner.common.scope import ScopeGuard
-from scanner.common.staging import staging_cleared
+from scanner.common.staging import staging_cleared, stress_cleared
 from scanner.web_scan import policy
 from scanner.web_scan.alerts import alert_to_finding
 from scanner.web_scan.policy import ScanProfile
@@ -47,17 +48,25 @@ class ProfileNotAllowedError(Exception):
     """Perfil que pode causar dano pedido contra um alvo que não tem liberação para ele."""
 
 
-def resolve_profile(msg: StageMessage, lab_hosts: list[str], staging: bool = False) -> ScanProfile:
-    """Perfil pedido na mensagem, com a trava dos níveis que gravam dados (regras 3 e 4).
+def resolve_profile(
+    msg: StageMessage, lab_hosts: list[str], staging: bool = False, stress: bool = False
+) -> ScanProfile:
+    """Perfil pedido na mensagem, com a trava dos níveis que causam dano (regras 3 e 4).
 
-    `aggressive` só quando TODO host do escopo é de laboratório. `intrusive` também numa cópia de
-    teste com autorização vigente (`staging`, consultado no banco por `staging_cleared`). Contra
-    qualquer outro alvo, recusa — não rebaixa em silêncio, para o pedido ficar explícito.
+    `aggressive` (sobrecarga/DoS) só em laboratório ou numa cópia liberada para resiliência
+    (`stress`). `intrusive` também numa cópia liberada para o intrusivo (`staging`). Ambos vêm do
+    banco (`staging_cleared`/`stress_cleared`). Contra qualquer outro alvo, recusa — não rebaixa em
+    silêncio, para o pedido ficar explícito.
     """
     profile = policy.resolve(msg.payload.get("profile"))
     lab = policy.is_lab_scope(msg.scope.allowed_hosts, lab_hosts)
-    if not policy.is_cleared(profile, lab=lab, staging=staging):
-        where = "laboratório" if profile.clearance == policy.LAB else "cópia de teste autorizada"
+    if not policy.is_cleared(profile, lab=lab, staging=staging, stress=stress):
+        if profile.clearance == policy.LAB:
+            where = "laboratório"
+        elif profile.clearance == policy.STRESS_STAGING:
+            where = "laboratório ou cópia liberada para resiliência"
+        else:
+            where = "cópia de teste autorizada"
         outside = {h.lower() for h in msg.scope.allowed_hosts} - {h.lower() for h in lab_hosts}
         raise ProfileNotAllowedError(
             f"perfil '{profile.name}' só roda em {where}; fora da liberação: {sorted(outside)}"
@@ -213,11 +222,13 @@ def run_scan(
 
         # Cobertura medida AQUI (fim do rastreio, antes do ativo): o scan ativo gera muitas URLs
         # de teste e inflaria a conta. Isto mede o que o rastreio realmente alcançou.
+        # Conta ROTAS distintas (assinatura: caminho + nomes de parâmetro), não cada URL permutada.
+        # É o que torna "páginas visitadas" estável entre scans do mesmo site.
         def measure() -> list[str]:
             urls: list[str] = []
             for base in msg.scope.base_urls:
                 urls.extend(zap.crawled_urls(base))
-            return urls
+            return canonical_routes(urls)
 
         crawled = measure()
         # Re-rastreio quando a cobertura sai rasa/regride: refaz o AJAX spider (a parte variável)
@@ -349,8 +360,9 @@ def handle(
     with sessions() as authz:
         check_authorized(authz, msg)
         staging = staging_cleared(authz, msg.target_id, msg.scope.allowed_hosts)
+        stress = stress_cleared(authz, msg.target_id, msg.scope.allowed_hosts)
     try:
-        profile = resolve_profile(msg, settings.lab_hosts, staging)
+        profile = resolve_profile(msg, settings.lab_hosts, staging, stress)
     except ProfileNotAllowedError as exc:
         # Pedido explícito e recusado: marca como falha e não tenta de novo (vai para dead-letter).
         log.error("perfil recusado", extra={"error": str(exc)})
@@ -390,7 +402,7 @@ def handle(
 
     # Semeadura: rotas da mensagem (sitemap/robots da etapa 2) + memória dos scans anteriores.
     # O ScopeGuard em run_scan descarta qualquer rota fora do escopo atual.
-    seed_routes = sorted(
+    seed_routes = canonical_routes(
         set(msg.payload.get("routes", [])) | set(get_known_routes(sessions, msg.target_id))
     )
 

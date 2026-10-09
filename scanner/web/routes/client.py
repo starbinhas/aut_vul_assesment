@@ -25,7 +25,7 @@ from scanner.common.db import (
 from scanner.common.models import Severity, Status
 from scanner.common.owasp import CATEGORIES
 from scanner.common.scope import scope_for
-from scanner.common.staging import staging_cleared
+from scanner.common.staging import staging_cleared, stress_cleared
 from scanner.report import manual_checks
 from scanner.report.models import Report as ReportModel
 from scanner.report.models import ReportItem
@@ -271,7 +271,9 @@ def site_detail(
         if s.status == ScanStatus.DONE and (rep := reports.get(s.scan_id))
     ]
     line, area = trend_paths([n for _, n in history])
-    copy_cleared = staging_cleared(db, target.target_id, scope_for(target).allowed_hosts)
+    hosts = scope_for(target).allowed_hosts
+    copy_cleared = staging_cleared(db, target.target_id, hosts)
+    stress_ready = stress_cleared(db, target.target_id, hosts)
     return render(
         request,
         "client/site_detail.html",
@@ -285,7 +287,9 @@ def site_detail(
         record_name=verification.record_name(target.domain),
         record_value=verification.record_value(target.verification_token),
         recurrence=RECURRENCE,
-        profiles=profiles_for(viewer, target, request.app.state.settings.lab_hosts, copy_cleared),
+        profiles=profiles_for(
+            viewer, target, request.app.state.settings.lab_hosts, copy_cleared, stress_ready
+        ),
         staging=staging_view(db, target, request.app.state.settings.lab_hosts),
         profile_info=labels.PROFILE_INFO,
         limits=_scan_limits(request.app.state.settings, target),

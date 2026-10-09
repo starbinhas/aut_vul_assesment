@@ -192,15 +192,16 @@ PROFILE_INFO: dict[str, dict[str, Any]] = {
     },
     "aggressive": {
         "level": 4,
-        "pitch": "Tudo o que o scanner sabe fazer. Só em alvo de teste.",
-        "tag": "Só laboratório",
-        "tests": "Todos os testes, inclusive os que gravam dados, os que fazem o site acessar "
-        "endereços externos (SSRF, inclusão remota) e os que simulam sobrecarga.",
-        "never": None,
+        "pitch": "Testa se dá para derrubar o site. Só numa cópia de teste descartável.",
+        "tag": "Cópia de resiliência",
+        "tests": "Tudo do intrusivo, mais os testes de sobrecarga que tentam derrubar o servidor "
+        "(Buffer Overflow, Billion Laughs e afins).",
+        "never": "Nunca roda no site oficial, nem numa cópia liberada só para o intrusivo.",
         "watch": [
-            "Pode apagar ou alterar dados e derrubar o site.",
-            "Bloqueado para qualquer site que não seja de laboratório, mesmo que alguém peça.",
+            "É esperado que a cópia fique instável ou fora do ar durante o teste.",
+            "Só aparece numa cópia liberada para resiliência, com termo de indisponibilidade "
+            "assinado e aprovado pelo time.",
         ],
-        "button": "Iniciar scan agressivo",
+        "button": "Iniciar teste de resiliência",
     },
 }

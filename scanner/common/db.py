@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from datetime import UTC, datetime
+from urllib.parse import parse_qsl, urlsplit
 
 from sqlalchemy import (
     JSON,
@@ -272,6 +274,56 @@ _STATIC_EXT = re.compile(
 )
 
 
+def route_signature(url: str) -> str:
+    """Identidade ESTÁVEL de uma rota: esquema://host/caminho?nomes-de-parâmetro (ordenados).
+
+    O valor dos parâmetros e o fragmento são descartados, a barra final e o host são normalizados.
+    Assim `/search?q=a` e `/search?q=b` são a MESMA rota (`/search?q`): o scan ativo injeta nos
+    parâmetros, não depende do valor. É a unidade de "página" e de memória; sem ela, a contagem de
+    páginas e de achados oscila conforme os valores que o rastreio sorteou visitar.
+    """
+    parts = urlsplit(url.strip())
+    path = parts.path or "/"
+    if len(path) > 1 and path.endswith("/"):
+        path = path.rstrip("/")
+    names = sorted({k for k, _ in parse_qsl(parts.query, keep_blank_values=True)})
+    base = f"{parts.scheme.lower()}://{parts.netloc.lower()}{path}"
+    return f"{base}?{','.join(names)}" if names else base
+
+
+def has_repeated_segment(url: str) -> bool:
+    """True se o caminho repete o nome de uma pasta (`/assets/assets/…`, `/a/i18n/a/…`).
+
+    É a assinatura da "armadilha de spider": links relativos num SPA resolvem para combinações de
+    pastas sem fim, cada profundidade virando um caminho distinto. Essas URLs não têm superfície de
+    ataque nova (o app serve o mesmo conteúdo) e, pior, QUANTAS aparecem depende da profundidade que
+    o rastreio alcançou naquele run — a causa da variação de páginas/achados entre scans.
+    """
+    segments = [s for s in urlsplit(url).path.split("/") if s]
+    return len(segments) != len(set(segments))
+
+
+def canonical_routes(urls: Iterable[str]) -> list[str]:
+    """Rotas distintas, determinísticas e estáveis a partir de uma lista de URLs rastreadas.
+
+    1. DESCARTA artefatos de armadilha de spider (caminho com pasta repetida). O descarte não
+       depende da profundidade alcançada, então o conjunto é o mesmo a cada scan — base da
+       consistência. (Custo aceito: uma rota real que repita o NOME de uma pasta, raro, fica de
+       fora do scan; nunca gera falso negativo de falha, só evita contar reflexos.)
+    2. Agrupa o resto por assinatura de rota, com representante determinístico (a URL mais curta;
+       empate: alfabética) para semear a forma limpa.
+    """
+    best: dict[str, str] = {}
+    for url in urls:
+        if has_repeated_segment(url):
+            continue
+        sig = route_signature(url)
+        current = best.get(sig)
+        if current is None or (len(url), url) < (len(current), current):
+            best[sig] = url
+    return sorted(best.values())
+
+
 def route_priority(url: str) -> int:
     """Valor de uma URL para re-testar: maior = mais importante manter na memória.
 
@@ -299,10 +351,14 @@ def remember_routes(  # type: ignore[no-untyped-def]
     """
     with sessions.begin() as session:
         mem = session.get(CrawlMemory, target_id)
-        union = set(routes) if mem is None else set(mem.routes) | set(routes)
-        # Ordena por valor (desc) e, em empate, alfabético — determinístico — e corta no teto.
-        merged = sorted(union, key=lambda u: (-route_priority(u), u))[:max_routes]
-        merged.sort()  # guarda em ordem estável (alfabética) para leitura/diff
+        existing = [] if mem is None else list(mem.routes)
+        # Colapsa por assinatura de rota: a memória CONVERGE para as rotas distintas do site e para
+        # de crescer (idempotente). Sem isto, cada permutação de query inflava o conjunto por scan.
+        merged = canonical_routes(existing + list(routes))
+        if len(merged) > max_routes:
+            # Teto de segurança: ao estourar, mantém o de MAIOR valor (parâmetro > API > página).
+            merged = sorted(merged, key=lambda u: (-route_priority(u), u))[:max_routes]
+            merged.sort()  # ordem estável (alfabética) para leitura/diff
         if mem is None:
             session.add(CrawlMemory(target_id=target_id, routes=merged, scan_id=scan_id))
         else:
@@ -412,6 +468,9 @@ class StagingAuthorization(Base):
     staging_target_id: Mapped[str] = mapped_column(ForeignKey("targets.target_id"), index=True)
     staging_host: Mapped[str] = mapped_column(String(253))
     status: Mapped[str] = mapped_column(String(16))  # draft|requested|approved|rejected|revoked
+    scope_level: Mapped[str] = mapped_column(  # intrusive|stress (stress libera o agressivo)
+        String(16), default="intrusive", server_default="intrusive"
+    )
     checklist: Mapped[dict[str, object]] = mapped_column(JsonType, default=dict)
     term_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
     term_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)

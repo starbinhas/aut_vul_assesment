@@ -2,11 +2,12 @@
 {% block title %}Cópias de teste{% endblock %}
 {% block content %}
 {% set waiting = items|selectattr("row.status", "equalto", "requested")|list %}
+{% set level_label = {"intrusive": "intrusivo", "stress": "de resiliência"} %}
 <div class="page-head">
   <div>
     <p class="eyebrow"><a href="/admin">Admin</a> / cópias de teste</p>
     <h1>{% if waiting %}{{ waiting|length|plural("cópia espera", "cópias esperam") }} revisão{% else %}Nenhuma cópia esperando revisão{% endif %}</h1>
-    <p class="lede">Aprovar libera o nível intrusivo (grava dados, faz o site acessar endereços externos) só no endereço da cópia, pelo prazo que o cliente escolheu.</p>
+    <p class="lede">Aprovar libera o teste só no endereço da cópia, pelo prazo que o cliente escolheu. O nível de resiliência autoriza também derrubar a cópia — confira infra separada e o aceite de indisponibilidade.</p>
   </div>
 </div>
 
@@ -28,7 +29,11 @@
     {% elif r.status == "rejected" %}<span class="pill warn">Recusada</span>
     {% else %}<span class="pill">Encerrada</span>{% endif %}
   </div>
-  <p class="muted mt-2 mb-0">Cópia de <a href="/sites/{{ it.production.target_id }}">{{ it.production.domain }}</a> ({{ it.org }})</p>
+  <p class="muted mt-2 mb-0">Cópia de <a href="/sites/{{ it.production.target_id }}">{{ it.production.domain }}</a> ({{ it.org }}) · teste {{ level_label[r.scope_level] }}</p>
+
+  {% if r.scope_level == "stress" %}
+  <div class="notice warn mt-3" role="status"><strong>Teste de resiliência (pode derrubar a cópia).</strong> Só aprove com a cópia em servidor separado do site oficial e com o aceite de indisponibilidade confirmado abaixo.</div>
+  {% endif %}
 
   <dl class="hml-facts">
     <dt>Assinado por</dt><dd>{{ r.signer_name }}, {{ r.signer_role }}{% if it.signer_email %} <span class="faint">{{ it.signer_email }}</span>{% endif %}</dd>
@@ -50,7 +55,7 @@
 
   <h3 class="mt-5">O que o cliente confirmou</h3>
   <ul class="hml-checks plain">
-    {% for key, text, _ in checklist %}
+    {% for key, text, _ in it.checklist %}
     <li class="{{ 'ok' if r.checklist.get(key) else 'no' }}"><span class="d">{{ text }}</span></li>
     {% endfor %}
   </ul>

@@ -672,6 +672,17 @@ body { isolation: isolate; }
 .hml-accept { border-bottom: 0; }
 .hml-days { margin-top: var(--s-2); }
 
+/* escolha do alcance: intrusivo x resiliência. A cor só entra na opção de risco, quando ativa. */
+.hml-levels { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-3); margin-top: var(--s-2); }
+.level-card { display: block; padding: var(--s-3) var(--s-4); border: 1px solid var(--line-strong); border-radius: var(--r-md); text-decoration: none; }
+.level-card .t { display: block; color: var(--ink); font-weight: 500; }
+.level-card .d { display: block; font-size: 13px; color: var(--ink-soft); margin-top: 4px; }
+.level-card:hover { border-color: var(--ink-soft); }
+.level-card.active { border-color: var(--ink); background: var(--surface-2); }
+.level-card.danger.active { border-color: var(--sev-high); background: color-mix(in srgb, var(--sev-high) 8%, var(--surface-2)); }
+.level-card.danger.active .t { color: var(--sev-high); }
+@media (max-width: 560px) { .hml-levels { grid-template-columns: 1fr; } }
+
 .hml-term { border: 1px solid var(--line-strong); border-radius: var(--r-md); padding: var(--s-4) var(--s-5); color: var(--ink-soft); font-size: 14px; line-height: 1.6; }
 .hml-term p { margin: 0; }
 .hml-term p + p { margin-top: var(--s-3); }

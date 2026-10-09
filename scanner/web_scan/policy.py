@@ -9,10 +9,13 @@ Quatro níveis. Quanto mais alto, mais cobertura e mais risco para o alvo:
                 e faz o alvo sair para a internet (SSRF/RFI/OAST). **Só em cópia de teste do
                 cliente, com autorização assinada e aprovada pelo time** (`common/staging.py`).
 - `aggressive`— TODAS as regras instaladas do ZAP, inclusive as que pesam como DoS. **Só alvo de
-                laboratório.**
+                laboratório OU uma cópia de teste descartável liberada para teste de resiliência**
+                (`common/staging.py`, `stress_cleared`): o cliente aceita por escrito que a cópia
+                pode ficar fora do ar. Nunca no site oficial.
 
 A trava (`clearance` + `is_cleared`) é aplicada em `web_scan/service.py` (`resolve_profile`):
-laboratório pela allowlist `settings.lab_hosts`; cópia de teste pela autorização vigente no banco.
+laboratório pela allowlist `settings.lab_hosts`; cópia de teste pela autorização vigente no banco
+(nível `intrusive` libera o intrusivo; nível `stress` libera também o agressivo).
 Nunca atinge produção, mesmo que alguém peça. As demais salvaguardas (autorização, escopo travado,
 limite de requisições/s e tempo máximo) valem em todos os perfis.
 """
@@ -103,10 +106,13 @@ BALANCED_EXTRA_RULES: dict[int, str] = {
 # Onde cada perfil pode rodar (`ScanProfile.clearance`).
 ANYWHERE = "any"  # qualquer site verificado, inclusive produção
 STAGING = "staging"  # cópia de teste com autorização assinada e aprovada (ou laboratório)
+STRESS_STAGING = "stress_staging"  # cópia de teste liberada para resiliência/DoS (ou laboratório)
 LAB = "lab"  # só hosts de laboratório (`settings.lab_hosts`)
 
-# Nunca rodam fora do laboratório, nem em cópia autorizada: pesam como DoS (podem derrubar o
-# servidor, que muitas vezes é o mesmo do site oficial) ou executam scripts arbitrários.
+# Pesam como DoS (podem derrubar o servidor) ou executam scripts arbitrários. Ficam de fora do
+# intrusivo: só rodam em laboratório ou numa cópia de teste descartável liberada para resiliência
+# (`clearance = STRESS_STAGING`), onde o cliente aceitou por escrito que a cópia pode cair. Nunca
+# no site oficial, nem numa cópia liberada só para o intrusivo.
 LAB_ONLY_RULES: dict[int, str] = {
     30001: "Buffer Overflow",
     30002: "Format String Error",
@@ -164,14 +170,15 @@ PROFILES: dict[str, ScanProfile] = {
     ),
     "aggressive": ScanProfile(
         name="aggressive",
-        label="Completo agressivo (laboratório)",
-        summary="Todos os testes, inclusive os que gravam dados, fazem o alvo sair e pesam "
-        "como DoS. Só em alvo de laboratório.",
+        label="Resiliência (cópia descartável)",
+        summary="Tudo do intrusivo mais os testes de sobrecarga, que podem derrubar o alvo. Só em "
+        "laboratório ou numa cópia de teste liberada para resiliência (o cliente aceita que ela "
+        "pode ficar fora do ar).",
         attack_strength="HIGH",
         alert_threshold="LOW",
         destructive=True,
         rules=None,
-        clearance=LAB,
+        clearance=STRESS_STAGING,
     ),
 }
 
@@ -183,12 +190,18 @@ def resolve(name: str | None) -> ScanProfile:
     return PROFILES.get(name or "", PROFILES[DEFAULT_PROFILE])
 
 
-def is_cleared(profile: ScanProfile, *, lab: bool, staging: bool) -> bool:
-    """O perfil pode rodar num alvo de laboratório (`lab`) / cópia autorizada (`staging`)?"""
+def is_cleared(profile: ScanProfile, *, lab: bool, staging: bool, stress: bool = False) -> bool:
+    """O perfil pode rodar aqui?
+
+    `lab`: todo o escopo é de laboratório. `staging`: cópia liberada para o intrusivo. `stress`:
+    cópia liberada para resiliência/DoS (que também cobre o intrusivo). O laboratório libera tudo.
+    """
     if profile.clearance == LAB:
         return lab
+    if profile.clearance == STRESS_STAGING:
+        return lab or stress
     if profile.clearance == STAGING:
-        return lab or staging
+        return lab or staging or stress
     return True
 
 
