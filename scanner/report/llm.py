@@ -1,19 +1,27 @@
-"""Geração de remediação com a Claude API (SDK oficial `anthropic`).
+"""Geração de remediação por LLM.
 
-- Saída estruturada com `messages.parse()` + Pydantic (nada de parsing de texto livre).
-- Thinking adaptativo e `effort` explícito.
-- System prompt fixo com cache_control (prompt caching).
-- O LLM só explica e corrige; nunca decide status de achado.
+Dois provedores atrás de uma interface comum (`Writer`):
+- `RemediationWriter` — Claude API (SDK `anthropic`): saída estruturada com `messages.parse()` +
+  Pydantic, thinking adaptativo, `effort` explícito, system prompt com cache_control.
+- `OpenAICompatibleWriter` — provedor compatível com OpenAI (Groq/Gemini/Ollama). **É o que roda no
+  MVP** por falta de chave Anthropic; mantém as mesmas garantias (mascara antes de enviar, saída
+  validada por Pydantic, fallback para o catálogo).
+
+Em qualquer provedor: o LLM só explica e corrige; nunca decide o status de um achado. Enquanto o MVP
+usar um provedor que não é Claude, material voltado ao cliente não pode dizer "Claude".
 """
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Protocol
 
 import anthropic
 from jinja2 import Environment, StrictUndefined
+from openai import OpenAI, OpenAIError
+from pydantic import ValidationError
 
 from scanner.common.masking import mask_text
 from scanner.common.models import Finding
@@ -24,6 +32,7 @@ from scanner.report.models import Remediation
 log = logging.getLogger(__name__)
 
 MAX_TOKENS = 16000
+COMPAT_MAX_TOKENS = 4000  # a remediação é curta; modelos gratuitos limitam a saída
 DESCRIPTION_LIMIT = 1500
 
 _SYSTEM = prompts.load(f"{prompts.PROMPT_VERSION}.system.md")
@@ -110,4 +119,65 @@ class RemediationWriter:
                 "output_tokens": response.usage.output_tokens,
             },
         )
+        return parsed
+
+
+class Writer(Protocol):
+    """Interface comum: o chamador (get_remediation) não sabe qual LLM está por trás."""
+
+    def write(self, req: RemediationRequest) -> Remediation | None: ...
+
+
+_JSON_INSTRUCTION = (
+    "Responda SOMENTE com um objeto JSON válido (sem texto fora do JSON, sem ```), "
+    "obedecendo exatamente a este JSON Schema:\n{schema}"
+)
+
+
+class OpenAICompatibleWriter:
+    """Remediação via API no protocolo OpenAI (Groq, Gemini, Ollama...). MVP gratuito sem Claude.
+
+    Mantém as regras do produto: os dados são mascarados antes de sair (`build_user_prompt` só
+    envia a família da falha + stack, nunca URL/evidência/cookie do cliente), a saída é JSON
+    validado por Pydantic (não é parsing de texto livre) e qualquer erro/vazio devolve None para o
+    chamador cair no catálogo estático — nunca deixa o achado sem texto.
+    """
+
+    def __init__(self, client: OpenAI, model: str) -> None:
+        self.client = client
+        self.model = model
+
+    def write(self, req: RemediationRequest) -> Remediation | None:
+        schema = json.dumps(Remediation.model_json_schema(), ensure_ascii=False)
+        system = f"{_SYSTEM}\n\n{_JSON_INSTRUCTION.format(schema=schema)}"
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": build_user_prompt(req)},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.2,
+                max_tokens=COMPAT_MAX_TOKENS,
+            )
+        except OpenAIError as exc:
+            log.error(
+                "erro do LLM compatível; usando catálogo", extra={"error": type(exc).__name__}
+            )
+            return None
+
+        content = response.choices[0].message.content if response.choices else None
+        if not content:
+            log.warning("LLM compatível sem conteúdo; usando catálogo")
+            return None
+        try:
+            parsed = Remediation.model_validate_json(content)
+        except ValidationError:
+            log.warning("JSON do LLM compatível inválido; usando catálogo")
+            return None
+        if not parsed.how_to_fix:
+            log.warning("LLM compatível sem passos de correção; usando catálogo")
+            return None
+        log.info("remediação gerada (compatível)", extra={"rule": req.finding.source.rule_id})
         return parsed

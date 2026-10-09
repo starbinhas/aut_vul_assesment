@@ -29,9 +29,10 @@ class CategoryPlan:
 PLAN: dict[str, CategoryPlan] = {
     "A01:2025": CategoryPlan(
         "A01:2025",
-        "parcial",
-        "teste de acesso entre usuários (access_probe)",
-        "detecção pronta e provada; falta integrar no pipeline automático (precisa de 2 usuários).",
+        "coberto",
+        "teste de acesso entre usuários (run_access_control na etapa 4, via ZAP)",
+        "IDOR integrado ao pipeline: roda com 2º usuário e recursos privados configurados; "
+        "prova determinística (só GET, não destrutivo).",
     ),
     "A02:2025": CategoryPlan(
         "A02:2025",

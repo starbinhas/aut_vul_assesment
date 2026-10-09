@@ -8,8 +8,10 @@ from scanner.validation.validators import (
     cookies,
     headers,
     open_redirect,
+    path_traversal,
     select,
     sqli_error,
+    ssti,
     xss_reflected,
 )
 from tests.conftest import LAB_URL, FakeClient, make_finding, resp
@@ -17,6 +19,10 @@ from tests.conftest import LAB_URL, FakeClient, make_finding, resp
 
 def q(url: str) -> str:
     return parse_qs(urlsplit(url).query)["q"][0]
+
+
+def q_named(url: str, name: str) -> str:
+    return parse_qs(urlsplit(url).query)[name][0]
 
 
 # --- XSS ---------------------------------------------------------------------------------
@@ -180,4 +186,71 @@ def test_open_redirect_protocol_relative_is_confirmed() -> None:
 def test_open_redirect_post_is_not_replayed() -> None:
     client = FakeClient(lambda url: resp(status=302, headers={"location": "x"}))
     v = open_redirect.validate(_redir_finding(method="POST"), client)
+    assert v.outcome is Outcome.UNCONFIRMED and client.calls == []
+
+
+# --- path traversal ----------------------------------------------------------------------
+
+
+def _pt_finding(**kw):
+    return make_finding(
+        rule_id="6", cwe=22, url=LAB_URL + "/download?file=report.pdf", param="file", **kw
+    )
+
+
+def test_path_traversal_confirmed_when_passwd_returned() -> None:
+    def responder(url: str):
+        value = q_named(url, "file")
+        if "etc/passwd" in value or "etc%2fpasswd" in value.lower():
+            return resp("root:x:0:0:root:/root:/bin/bash\ndaemon:x:1:1:")
+        return resp("conteúdo normal")
+
+    v = path_traversal.validate(_pt_finding(), FakeClient(responder))
+    assert v.outcome is Outcome.CONFIRMED and v.proof is not None
+
+
+def test_path_traversal_unconfirmed_when_no_system_file() -> None:
+    v = path_traversal.validate(_pt_finding(), FakeClient(lambda url: resp("nada aqui")))
+    assert v.outcome is Outcome.UNCONFIRMED
+
+
+def test_path_traversal_post_is_not_replayed() -> None:
+    client = FakeClient(lambda url: resp("root:x:0:0:"))
+    v = path_traversal.validate(_pt_finding(method="POST"), client)
+    assert v.outcome is Outcome.UNCONFIRMED and client.calls == []
+
+
+# --- SSTI ---------------------------------------------------------------------------------
+
+
+def _ssti_finding(**kw):
+    return make_finding(
+        rule_id="90035", cwe=1336, url=LAB_URL + "/greet?name=joe", param="name", **kw
+    )
+
+
+def test_ssti_confirmed_when_expression_is_evaluated() -> None:
+    # Servidor vulnerável: avalia o template e devolve o produto (sem ecoar a expressão crua).
+    def responder(url: str):
+        value = q_named(url, "name")
+        if "12*13" in value:
+            return resp("Olá, 156!")
+        return resp("Olá!")
+
+    v = ssti.validate(_ssti_finding(), FakeClient(responder), numbers=(12, 13))
+    assert v.outcome is Outcome.CONFIRMED and v.proof is not None
+
+
+def test_ssti_unconfirmed_when_only_reflected() -> None:
+    # Servidor seguro: reflete a expressão crua, sem avaliar -> produto ausente -> não confirma.
+    def responder(url: str):
+        return resp(f"Olá, {q_named(url, 'name')}!")
+
+    v = ssti.validate(_ssti_finding(), FakeClient(responder), numbers=(12, 13))
+    assert v.outcome is Outcome.UNCONFIRMED
+
+
+def test_ssti_post_is_not_replayed() -> None:
+    client = FakeClient(lambda url: resp("156"))
+    v = ssti.validate(_ssti_finding(method="POST"), client, numbers=(12, 13))
     assert v.outcome is Outcome.UNCONFIRMED and client.calls == []

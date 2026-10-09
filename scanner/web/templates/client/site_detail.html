@@ -119,6 +119,13 @@
       <input type="password" name="password" autocomplete="off" placeholder="para testar a área logada (opcional)">
       <span class="faint small">Usada só neste scan, nunca guardada. Em branco = scan sem login.</span>
     </label>
+    {% if auth_config.other_email %}
+    <label class="auth-pass">
+      <span class="auth-pass-label">Senha do 2º usuário de teste <span class="faint">({{ auth_config.other_email }})</span></span>
+      <input type="password" name="other_password" autocomplete="off" placeholder="para checar acesso indevido entre usuários (opcional)">
+      <span class="faint small">Usada só neste scan, nunca guardada.</span>
+    </label>
+    {% endif %}
     {% endif %}
     <div class="profile-submit">
       <button class="btn primary" type="submit">{% for p in profiles %}<span class="when when-{{ p.name }}">{{ profile_info.get(p.name, {}).button or "Iniciar scan" }}</span>{% endfor %}</button>
@@ -156,16 +163,43 @@
       <input type="text" inputmode="url" name="login_url" value="{{ auth_config.login_url if auth_config else '' }}" placeholder="https://seusite.com/api/login">
     </label>
     <label class="field">
-      <span>E-mail do usuário de teste</span>
-      <input type="email" name="email" value="{{ auth_config.email if auth_config else '' }}" placeholder="scanner-teste@seusite.com">
+      <span>Usuário de teste <span class="faint">(e-mail ou login)</span></span>
+      <input type="text" name="email" value="{{ auth_config.email if auth_config else '' }}" placeholder="scanner-teste@seusite.com">
     </label>
     <label class="field">
-      <span>Onde está o token na resposta <span class="faint">(caminho no JSON)</span></span>
+      <span>Tipo de login</span>
+      <select name="login_mode">
+        <option value="token" {% if not auth_config or auth_config.login_mode != 'form' %}selected{% endif %}>Por token (API, resposta em JSON)</option>
+        <option value="form" {% if auth_config and auth_config.login_mode == 'form' %}selected{% endif %}>Por formulário (cookie de sessão)</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>Onde está o token na resposta <span class="faint">(login por token; caminho no JSON)</span></span>
       <input type="text" name="token_path" value="{{ auth_config.token_path if auth_config else 'token' }}" placeholder="ex.: authentication.token">
+    </label>
+    <label class="field">
+      <span>Nome do campo de usuário <span class="faint">(login por formulário)</span></span>
+      <input type="text" name="username_field" value="{{ auth_config.username_field if auth_config and auth_config.username_field else 'username' }}" placeholder="ex.: username">
+    </label>
+    <label class="field">
+      <span>Nome do campo de senha <span class="faint">(login por formulário)</span></span>
+      <input type="text" name="password_field" value="{{ auth_config.password_field if auth_config and auth_config.password_field else 'password' }}" placeholder="ex.: password">
     </label>
     <label class="field">
       <span>Recurso que exige login <span class="faint">(opcional, para o teste de token)</span></span>
       <input type="text" name="protected_path" value="{{ auth_config.protected_path if auth_config else '' }}" placeholder="ex.: /api/perfil">
+    </label>
+    <label class="field">
+      <span>E-mail de um 2º usuário de teste <span class="faint">(opcional, para checar acesso indevido entre usuários)</span></span>
+      <input type="email" name="other_email" value="{{ auth_config.other_email if auth_config and auth_config.other_email else '' }}" placeholder="outro-usuario@seusite.com">
+    </label>
+    <label class="field">
+      <span>Recursos privados para checar <span class="faint">(um por linha; páginas ou dados que são só do 1º usuário)</span></span>
+      <textarea name="idor_resources" rows="3" placeholder="/api/pedidos/123">{{ auth_config.idor_resources if auth_config and auth_config.idor_resources else '' }}</textarea>
+    </label>
+    <label class="field">
+      <span>Marcador do dono <span class="faint">(opcional; um trecho que só aparece para o 1º usuário — em branco, usamos o e-mail dele)</span></span>
+      <input type="text" name="owner_marker" value="{{ auth_config.owner_marker if auth_config and auth_config.owner_marker else '' }}" placeholder="ex.: um id ou e-mail do 1º usuário">
     </label>
     <div class="row">
       <button class="btn primary" type="submit">Salvar login de teste</button>

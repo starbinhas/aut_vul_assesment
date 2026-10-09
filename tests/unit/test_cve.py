@@ -1,4 +1,7 @@
+import json
+
 from scanner.common.models import Severity, Status
+from scanner.cve import service as cve_service
 from scanner.cve.nuclei import nuclei_to_finding, parse_cwe, parse_nuclei_jsonl
 
 EVENT = {
@@ -71,9 +74,21 @@ def test_falls_back_to_host_when_no_match() -> None:
     assert f.location.url == "http://juice-shop:3000"
 
 
-def test_parse_jsonl_skips_blank_and_malformed() -> None:
-    import json
+def test_scan_targets_aggregates_and_dedups(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # Cada alvo devolve o MESMO achado (EVENT, url fixa) + um único por alvo.
+    def fake_run_nuclei(target_url: str, timeout_s: int = 600) -> str:
+        unique = EVENT | {"template-id": f"T-{target_url}", "matched-at": target_url}
+        return "\n".join([json.dumps(EVENT), json.dumps(unique)])
 
+    monkeypatch.setattr(cve_service, "run_nuclei", fake_run_nuclei)
+    findings = cve_service.scan_targets(["http://a/", "http://b/"], "scan-1", "t-1")
+    # 1 comum (deduplicado) + 1 único de "a" + 1 único de "b" = 3
+    assert len(findings) == 3
+    ids = {f.finding_id for f in findings}
+    assert len(ids) == 3  # nenhum duplicado
+
+
+def test_parse_jsonl_skips_blank_and_malformed() -> None:
     text = "\n".join(
         [
             json.dumps(EVENT),

@@ -45,5 +45,7 @@ def test_plan_status_values_are_valid() -> None:
 def test_missing_lists_only_our_pending_work() -> None:
     # "parcial"/"planejado" = nosso e ainda não pronto; manual/externo/coberto ficam de fora.
     assert all(p.status in ("parcial", "planejado") for p in missing())
-    assert plan_for("A01:2025").status == "parcial"
+    assert plan_for("A01:2025").status == "coberto"  # IDOR agora integrado ao pipeline
+    assert plan_for("A01:2025") not in missing()
+    assert plan_for("A10:2025").status == "parcial"
     assert plan_for("A05:2025").status == "coberto"

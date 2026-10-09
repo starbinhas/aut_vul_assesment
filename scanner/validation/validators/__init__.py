@@ -6,7 +6,9 @@ from scanner.validation.validators import (
     cookies,
     headers,
     open_redirect,
+    path_traversal,
     sqli_error,
+    ssti,
     xss_reflected,
 )
 from scanner.validation.validators.base import Validator, registry, select
@@ -14,4 +16,4 @@ from scanner.validation.validators.base import Validator, registry, select
 __all__ = ["Validator", "registry", "select"]
 
 # Importar os módulos registra os validadores.
-_ = (cookies, headers, open_redirect, sqli_error, xss_reflected)
+_ = (cookies, headers, open_redirect, path_traversal, sqli_error, ssti, xss_reflected)

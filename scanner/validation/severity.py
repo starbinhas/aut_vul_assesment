@@ -9,6 +9,7 @@ BASE_SEVERITY: dict[int, Severity] = {
     78: Severity.CRITICAL,  # injeção de comando no SO
     89: Severity.HIGH,  # SQL injection
     94: Severity.CRITICAL,  # injeção de código
+    1336: Severity.CRITICAL,  # SSTI (injeção de template no servidor; costuma levar a RCE)
     611: Severity.HIGH,  # XXE
     22: Severity.HIGH,  # path traversal
     79: Severity.MEDIUM,  # XSS refletido

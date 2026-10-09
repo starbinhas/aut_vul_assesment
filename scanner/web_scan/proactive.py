@@ -9,16 +9,21 @@ re-validação rebaixaria um achado sem validador correspondente).
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
+
+import httpx
 
 from scanner.common.models import Finding, Outcome
+from scanner.validation.access_control import classify_access
 from scanner.validation.auth_checks import MIN_ATTEMPTS, classify_login_protection
+from scanner.validation.http import ProbeResponse
 from scanner.validation.jwt_integrity import (
     classify_jwt_integrity,
     decode_payload,
     unsigned_token,
 )
 from scanner.validation.proactive import build_finding
-from scanner.web_scan.zap import LoginCredential, ZapScanner
+from scanner.web_scan.zap import HeaderCredential, LoginCredential, ZapError, ZapScanner
 
 log = logging.getLogger(__name__)
 
@@ -37,6 +42,45 @@ def run_login_lockout(
     if validation.outcome == Outcome.CONFIRMED:
         return build_finding(scan_id, target_id, login.login_url, validation)
     return None
+
+
+def run_access_control(
+    zap: ZapScanner,
+    owner: HeaderCredential,
+    login: LoginCredential,
+    resource_urls: list[str],
+    scan_id: str,
+    target_id: str,
+) -> list[Finding]:
+    """A01: outro usuário consegue ler os dados privados do dono (IDOR / quebra de acesso)?
+
+    Loga um SEGUNDO usuário pelo ZAP e lê cada recurso privado do dono com as duas sessões. A
+    decisão é determinística (`classify_access`): confirma só quando o outro usuário recebe 200 com
+    o marcador do dono. Só leitura (GET) — não destrutivo, pode rodar em cliente. Emite achado só
+    nos recursos CONFIRMED; acesso corretamente negado não vira achado.
+    """
+    other_spec = replace(login, email=login.other_email, password=login.other_password)
+    try:
+        other = zap.login(other_spec)
+    except ZapError:
+        log.warning("A01: login do segundo usuário falhou; IDOR não checado")
+        return []
+    marker = login.owner_marker or login.email
+    found: list[Finding] = []
+    for url in resource_urls:
+        owner_status, owner_body = zap.authed_get(url, owner.name, owner.value)
+        other_status, other_body = zap.authed_get(url, other.name, other.value)
+        owner_resp = ProbeResponse(
+            status=owner_status, headers=httpx.Headers(), text=owner_body, url=url
+        )
+        other_resp = ProbeResponse(
+            status=other_status, headers=httpx.Headers(), text=other_body, url=url
+        )
+        validation = classify_access(url, owner_resp, other_resp, marker)
+        log.info("A01 access control", extra={"url": url, "outcome": validation.outcome})
+        if validation.outcome == Outcome.CONFIRMED:
+            found.append(build_finding(scan_id, target_id, url, validation))
+    return found
 
 
 def _tamper_signature(token: str) -> str:

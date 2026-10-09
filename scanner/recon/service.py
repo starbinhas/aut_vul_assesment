@@ -15,11 +15,44 @@ from scanner.common.config import Settings
 from scanner.common.models import Scope, StageMessage
 from scanner.common.scope import ScopeGuard
 from scanner.recon.naabu import DiscoveredPort, build_naabu_command, parse_naabu_jsonl
+from scanner.recon.openapi import COMMON_SPEC_PATHS, parse_openapi
 from scanner.recon.routes import parse_robots, parse_sitemap
 
 log = logging.getLogger(__name__)
 
 MAX_ROUTES = 500  # teto de rotas semeadas, para não inundar a árvore do ZAP
+
+# Portas de serviço web -> esquema. Uma porta descoberta nessa lista vira um alvo HTTP para a etapa
+# 3 (nuclei). Portas não-web (ex.: 22 SSH, 3306 MySQL) ficam de fora: a varredura web não se aplica.
+WEB_PORT_SCHEME: dict[int, str] = {
+    80: "http",
+    8080: "http",
+    8000: "http",
+    8888: "http",
+    3000: "http",
+    5000: "http",
+    443: "https",
+    8443: "https",
+}
+
+
+def cve_targets(scope: Scope, ports: list[DiscoveredPort]) -> list[str]:
+    """Alvos da etapa 3 (nuclei): os base_urls + serviços web nas portas descobertas, em escopo.
+
+    Antes, a etapa 3 só varria `base_urls[0]` e as portas do naabu eram descartadas. Agora um app
+    numa porta fora do padrão (ex.: :8080) ou num host adicional do escopo também é varrido. Tudo
+    passa pela trava de escopo; portas não-web são ignoradas.
+    """
+    guard = ScopeGuard(scope)
+    targets: set[str] = set(scope.base_urls)
+    for p in ports:
+        scheme = WEB_PORT_SCHEME.get(p.port)
+        if scheme is None:
+            continue
+        url = f"{scheme}://{p.host}:{p.port}/"
+        if guard.allows(url):
+            targets.add(url)
+    return sorted(targets)
 
 
 def run_naabu(host: str, timeout_s: int = 300) -> list[DiscoveredPort]:
@@ -58,6 +91,29 @@ def discover(scope: Scope, timeout_s: int = 300) -> list[DiscoveredPort]:
     return list(seen.values())
 
 
+def _openapi_routes(client: httpx.Client, base: str, guard: ScopeGuard) -> set[str]:
+    """Procura um spec OpenAPI/Swagger nos caminhos convencionais e extrai as rotas, em escopo."""
+    found: set[str] = set()
+    for spec_path in COMMON_SPEC_PATHS:
+        spec_url = urljoin(base, spec_path)
+        if not guard.allows(spec_url):
+            continue
+        try:
+            resp = client.get(spec_url)
+        except httpx.HTTPError:
+            continue
+        if resp.status_code != 200:
+            continue
+        try:
+            spec = resp.json()
+        except ValueError:
+            continue
+        if isinstance(spec, dict) and ("openapi" in spec or "swagger" in spec):
+            found.update(u for u in parse_openapi(spec, base) if guard.allows(u))
+            break  # achou o spec; não tenta os outros caminhos
+    return found
+
+
 def discover_routes(scope: Scope, timeout_s: int = 15) -> list[str]:
     """Rotas que o próprio site publica (robots.txt + sitemap.xml), dentro do escopo.
 
@@ -82,6 +138,7 @@ def discover_routes(scope: Scope, timeout_s: int = 15) -> list[str]:
                         found.update(u for u in parse_sitemap(resp.text) if guard.allows(u))
                 except httpx.HTTPError:
                     pass
+            found.update(_openapi_routes(client, base, guard))
     routes = sorted(found)[:MAX_ROUTES]
     log.info("rotas descobertas (sitemap/robots)", extra={"routes": len(routes)})
     return routes
@@ -118,6 +175,8 @@ def handle(
     payload = dict(msg.payload)
     existing = list(payload.get("routes", []))
     payload["routes"] = sorted(set(existing) | set(discover_routes(scope)))
+    # Alvos para a etapa 3: base_urls + serviços web nas portas descobertas (antes, descartadas).
+    payload["cve_targets"] = cve_targets(scope, ports)
 
     # Fan-out: etapa 3 (nuclei) e etapa 4 (ZAP) usam o mesmo escopo e correm em paralelo.
     publish(r, STREAM_CVE_REQUESTED, make_message(msg, "cve.requested", dict(payload)))

@@ -7,8 +7,8 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from typing import Any
-from urllib.parse import urlsplit
+from typing import Any, Literal
+from urllib.parse import urlencode, urlsplit
 
 from zapv2 import ZAPv2
 
@@ -19,6 +19,12 @@ from scanner.web_scan import policy
 log = logging.getLogger(__name__)
 
 POLL_SECONDS = 5
+
+# Exclusão de "armadilha de spider": URL cujo caminho repete um segmento de pasta (consecutivo ou
+# não) — p.ex. /assets/assets/… ou /assets/i18n/assets/…. Casa a URL inteira (semântica do ZAP, que
+# usa Pattern.matches). Caminho real que repita o NOME de uma pasta (raro) é mantido fora do scan;
+# é o mesmo custo aceito em route_signature e nunca gera falso negativo de falha, só evita reflexos.
+REPEATED_SEGMENT_REGEX = r"https?://[^/]+/(?:[^?#]*/)?([^/?#]+)/(?:[^?#]*/)?\1(?:[/?#].*)?"
 
 
 class ScanTimeoutError(Exception):
@@ -78,7 +84,20 @@ class LoginCredential:
     token_path: tuple[str, ...] = ("authentication", "token")
     header_name: str = "Authorization"
     header_template: str = "Bearer {token}"  # {token} é substituído pelo valor extraído
+    # `token`: login por API (POST JSON -> token no corpo -> cabeçalho Bearer). `form`: login
+    # clássico por formulário (POST x-www-form-urlencoded -> cookie de sessão no Set-Cookie ->
+    # cabeçalho Cookie). O modo `form` cobre a maioria dos sites de PME (sessão por cookie).
+    mode: Literal["token", "form"] = "token"
+    username_field: str = "username"  # nome do campo de usuário no formulário
+    password_field: str = "password"  # noqa: S105 — nome do campo do formulário, não uma senha
     protected_path: str = ""  # recurso que exige auth (p/ A08); vazio desliga a checagem
+    # Checagem A01 (IDOR/quebra de acesso): precisa de um SEGUNDO usuário e de recursos privados do
+    # dono para comparar. Vazio desliga a checagem. A senha do 2º usuário, como a do 1º, só vem por
+    # execução (nunca persistida). `owner_marker` vazio -> usa o e-mail do dono como marcador.
+    other_email: str = ""
+    other_password: str = field(default="", repr=False)
+    idor_resources: tuple[str, ...] = ()
+    owner_marker: str = ""
 
 
 def extract_token(body: dict[str, Any], path: tuple[str, ...]) -> str:
@@ -116,16 +135,46 @@ def response_status(sent: Any) -> int | None:
 
 
 def build_login_request(spec: LoginCredential) -> str:
-    """Requisição HTTP crua de login para o ZAP enviar (POST JSON com e-mail e senha)."""
-    payload = json.dumps({"email": spec.email, "password": spec.password})
+    """Requisição HTTP crua de login para o ZAP enviar.
+
+    Modo `token`: POST JSON (`{"email","password"}`). Modo `form`: POST form-encoded com os nomes de
+    campo configurados (`username_field`/`password_field`).
+    """
     host = urlsplit(spec.login_url).netloc
+    if spec.mode == "form":
+        body = urlencode({spec.username_field: spec.email, spec.password_field: spec.password})
+        content_type = "application/x-www-form-urlencoded"
+    else:
+        body = json.dumps({"email": spec.email, "password": spec.password})
+        content_type = "application/json"
     return (
         f"POST {spec.login_url} HTTP/1.1\r\n"
         f"Host: {host}\r\n"
-        f"Content-Type: application/json\r\n"
-        f"Content-Length: {len(payload.encode())}\r\n\r\n"
-        f"{payload}"
+        f"Content-Type: {content_type}\r\n"
+        f"Content-Length: {len(body.encode())}\r\n\r\n"
+        f"{body}"
     )
+
+
+def login_response_cookies(sent: Any) -> str:
+    """Monta o cabeçalho `Cookie` a partir dos `Set-Cookie` da resposta de login (modo form).
+
+    Pega o par `nome=valor` de cada `Set-Cookie` (descarta atributos como Path/HttpOnly) e junta com
+    "; ". Vazio = o login não devolveu cookie de sessão (provável falha de autenticação).
+    """
+    if isinstance(sent, str):
+        raise ZapError(f"ZAP recusou o login: {sent}")
+    msg = sent[-1] if isinstance(sent, list) and sent else sent
+    if not isinstance(msg, dict):
+        raise ZapError("resposta de login inesperada do ZAP")
+    header = str(msg.get("responseHeader", ""))
+    pairs: list[str] = []
+    for line in header.replace("\r\n", "\n").split("\n"):
+        if line.lower().startswith("set-cookie:"):
+            pair = line.split(":", 1)[1].split(";", 1)[0].strip()
+            if pair:
+                pairs.append(pair)
+    return "; ".join(pairs)
 
 
 def login_response_body(sent: Any) -> str:
@@ -173,6 +222,14 @@ class ZapScanner:
             _ok(self.zap.context.include_in_context(name, regex), "include_in_context")
         for regex in guard.zap_exclude_regexes():
             _ok(self.zap.context.exclude_from_context(name, regex), "exclude_from_context")
+        # Armadilha de spider: links relativos geram caminhos com uma pasta repetida
+        # (/assets/assets/assets/…) sem fim. Excluímos do contexto para o ZAP NÃO percorrer —
+        # economiza tempo e torna a cobertura estável (o robô não "conta reflexos" diferentes a
+        # cada run). canonical_routes (db.py) é a rede de segurança caso algo escape mesmo assim.
+        _ok(
+            self.zap.context.exclude_from_context(name, REPEATED_SEGMENT_REGEX),
+            "exclude_trap",
+        )
         _ok(self.zap.context.set_context_in_scope(name, True), "set_context_in_scope")
         return name, context_id
 
@@ -276,7 +333,16 @@ class ZapScanner:
         montamos o cabeçalho. Limitação: se o token expirar no meio do scan, não há reautenticação
         automática (área logada exige scan dentro do tempo de validade do token).
         """
-        sent = self.zap.core.send_request(build_login_request(spec), followredirects=True)
+        # Token segue o redirect (o token vem no corpo após o 3xx); form NÃO segue (o cookie de
+        # sessão vem no Set-Cookie da resposta imediata, que o redirect descartaria).
+        follow = spec.mode == "token"
+        sent = self.zap.core.send_request(build_login_request(spec), followredirects=follow)
+        if spec.mode == "form":
+            cookie = login_response_cookies(sent)
+            if not cookie:
+                raise ZapError("login por formulário não retornou cookie de sessão")
+            log.info("login efetuado", extra={"header": "Cookie"})
+            return HeaderCredential(name="Cookie", value=cookie)
         try:
             body = json.loads(login_response_body(sent))
         except (json.JSONDecodeError, TypeError) as exc:
@@ -309,6 +375,21 @@ class ZapScanner:
         )
         sent = self.zap.core.send_request(req, followredirects=False)
         return response_status(sent) or 0
+
+    def authed_get(self, url: str, header_name: str, header_value: str) -> tuple[int, str]:
+        """GET em `url` (pelo ZAP) com um cabeçalho de autenticação; devolve (status, corpo).
+
+        Usado pela checagem A01 (IDOR): lê o MESMO recurso como o dono e como outro usuário para
+        comparar. Só leitura (GET), não destrutivo. Segue redirecionamento para resolver páginas de
+        login (um acesso negado por redirect vira resposta ambígua, não um achado).
+        """
+        host = urlsplit(url).netloc
+        req = (
+            f"GET {url} HTTP/1.1\r\nHost: {host}\r\n"
+            f"{header_name}: {header_value}\r\nAccept: */*\r\n\r\n"
+        )
+        sent = self.zap.core.send_request(req, followredirects=True)
+        return response_status(sent) or 0, login_response_body(sent)
 
     CREDENTIAL_RULE = "scanner-credential"
 

@@ -187,14 +187,20 @@ Mensagens em Redis Streams, payload JSON, independente de linguagem (os colegas 
 - Os nomes dos streams acima são os oficiais.
 
 > **Etapa 1 é nossa (via interface):** a verificação de domínio (DNS TXT, `web/verification.py`) e a
-> trava de escopo são a etapa 1. **A integrar:** ao iniciar um scan, a etapa 1 deve disparar o
-> pipeline completo (hoje publica só `scan.web.requested`; faltam `2 recon` e `3 CVEs` à frente).
+> trava de escopo são a etapa 1. Ao iniciar um scan, a etapa 1 publica `scan.recon.requested`
+> (`web/services.py`); o recon (etapa 2) então dispara `scan.cve.requested` e `scan.web.requested`
+> (`recon/service.py`). O pipeline já roda ponta a ponta. **A integrar ainda:** levar as portas
+> descobertas pelo naabu adiante (hoje o CVE só varre `base_urls[0]`) — ver `docs/plano-de-acao.md`.
 > Achados das nossas checagens próprias usam `source.tool = "scanner"` (contrato 1.1).
 
 ## LLM (etapa 6)
 
-- SDK oficial `anthropic` em Python. Modelo padrão: `claude-opus-5-5` (ID exato, sem sufixo de data).
-  Trocar de modelo é decisão do time, medida contra o conjunto de avaliação.
+- SDK oficial `anthropic` em Python. Modelo-alvo: `claude-opus-5-5` (ID exato, sem sufixo de data).
+  Trocar de modelo é decisão do time, medida contra o conjunto de avaliação (`scanner/report/eval.py`).
+  **Estado atual (MVP):** por falta de chave Anthropic, o `.env` vivo roda um provedor compatível com
+  OpenAI (Groq, `openai/gpt-oss-120b`), via `OpenAICompatibleWriter`. Enquanto for assim, **nenhum
+  material voltado ao cliente pode dizer "Claude"** — dizer só "IA". Migrar para Claude quando houver
+  chave e o eval confirmar o ganho.
 - Saída estruturada com `client.messages.parse()` + modelo Pydantic — nunca fazer parsing de texto livre.
 - Thinking adaptativo; definir `output_config.effort` explicitamente (o padrão do Opus 5.5 é `medium`).
 - Tratar `stop_reason == "refusal"` (o classificador `cyber` pode recusar textos sobre

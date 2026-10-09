@@ -181,13 +181,101 @@ def test_route_priority_order() -> None:
     assert route_priority("http://a/logo.png") == 0
 
 
-def test_cap_keeps_valuable_over_static(sessions) -> None:
+def test_static_assets_are_dropped_not_stored(sessions) -> None:
     static = [f"http://a/img{i:03d}.png" for i in range(20)]
     valuable = ["http://a/rest/products/search?q=x", "http://a/rest/admin", "http://a/login"]
-    remember_routes(sessions, "t1", "s1", static + valuable, max_routes=5)
+    remember_routes(sessions, "t1", "s1", static + valuable, max_routes=50)
     stored = get_known_routes(sessions, "t1")
-    assert len(stored) == 5
-    # Os valiosos sobrevivem ao teto; os estáticos é que são cortados.
-    assert "http://a/rest/products/search?q=x" in stored
-    assert "http://a/rest/admin" in stored
-    assert "http://a/login" in stored
+    # Estáticos não entram na memória (sem superfície de ataque); só os valiosos ficam.
+    assert sorted(stored) == sorted(valuable)
+
+
+def test_cap_keeps_higher_value_routes(sessions) -> None:
+    params = [f"http://a/busca?q={i}&p={i}" for i in range(8)]  # distintos por valor? não:
+    # mesma rota -> colapsam em 1; use caminhos distintos com parâmetro para testar o teto
+    params = [f"http://a/p{i}?x=1" for i in range(8)]  # prioridade 3 (parâmetro)
+    pages = [f"http://a/pag{i}" for i in range(8)]  # prioridade 1 (página)
+    remember_routes(sessions, "t1", "s1", params + pages, max_routes=8)
+    stored = get_known_routes(sessions, "t1")
+    assert len(stored) == 8
+    # Ao estourar o teto, as rotas com parâmetro (mais atacáveis) sobrevivem às páginas comuns.
+    assert all("?x=1" in u for u in stored)
+
+
+# --- assinatura de rota e convergência da memória -------------------------------------------
+
+from scanner.common.db import (  # noqa: E402
+    canonical_routes,
+    has_repeated_segment,
+    route_signature,
+)
+
+
+def test_route_signature_ignores_param_values() -> None:
+    a = route_signature("http://a/busca?q=maca")
+    b = route_signature("http://a/busca?q=pera")
+    assert a == b == "http://a/busca?q"
+
+
+def test_route_signature_sorts_param_names_and_drops_fragment() -> None:
+    a = route_signature("http://a/x?b=1&a=2#frag")
+    b = route_signature("http://a/x?a=9&b=8")
+    assert a == b == "http://a/x?a,b"
+
+
+def test_route_signature_normalizes_trailing_slash_and_case() -> None:
+    assert route_signature("http://A/foo/") == route_signature("http://a/foo") == "http://a/foo"
+    assert route_signature("http://a/") == "http://a/"  # raiz preservada
+
+
+def test_canonical_routes_collapses_permutations_deterministically() -> None:
+    urls = ["http://a/s?q=z", "http://a/s?q=a", "http://a/s?q=m", "http://a/outra"]
+    assert canonical_routes(urls) == ["http://a/outra", "http://a/s?q=a"]  # representante = menor
+
+
+def test_memory_converges_and_stops_growing(sessions) -> None:
+    # Primeiro scan: uma rota de busca com um valor.
+    remember_routes(sessions, "t1", "scan-1", ["http://a/busca?q=maca"])
+    # Scan seguinte: a MESMA rota com outros valores não deve inflar a memória.
+    remember_routes(sessions, "t1", "scan-2", ["http://a/busca?q=pera", "http://a/busca?q=uva"])
+    stored = get_known_routes(sessions, "t1")
+    assert len(stored) == 1  # convergiu: uma rota só, não inflou
+    assert route_signature(stored[0]) == "http://a/busca?q"
+    # Determinístico: reprocessar não muda o conjunto.
+    remember_routes(sessions, "t1", "scan-3", ["http://a/busca?q=xyz"])
+    assert get_known_routes(sessions, "t1") == stored
+
+
+def test_has_repeated_segment_detects_spider_trap() -> None:
+    assert has_repeated_segment("http://a/assets/assets")  # consecutivo
+    assert has_repeated_segment("http://a/assets/i18n/assets/public")  # não consecutivo
+    assert has_repeated_segment("http://a/x/x/x")
+    assert not has_repeated_segment("http://a/rest/products/search?q=")
+    assert not has_repeated_segment("http://a/assets/public/images/products")
+    assert not has_repeated_segment("http://a/")
+
+
+def test_canonical_routes_drops_spider_trap() -> None:
+    # Profundidades e combinações variadas da armadilha são TODAS descartadas (lixo), reste a rota
+    # limpa. O descarte não depende de quão fundo o rastreio foi — por isso é estável entre scans.
+    urls = [f"http://a/{'data/' * n}x" for n in range(2, 50)]  # todas têm 'data' repetido
+    urls += ["http://a/assets/public/report.pdf", "http://a/rest/user/login"]
+    assert canonical_routes(urls) == [
+        "http://a/assets/public/report.pdf",
+        "http://a/rest/user/login",
+    ]
+
+
+def test_canonical_routes_drops_static_assets() -> None:
+    urls = [
+        "http://a/main.js",
+        "http://a/styles.css",
+        "http://a/logo.png",
+        "http://a/fonts/icons.woff2",
+        "http://a/rest/products/search?q=",  # mantém: superfície de ataque
+        "http://a/ftp/coupons.md.bak",  # mantém: arquivo exposto (não é estático)
+    ]
+    assert canonical_routes(urls) == [
+        "http://a/ftp/coupons.md.bak",
+        "http://a/rest/products/search?q=",
+    ]

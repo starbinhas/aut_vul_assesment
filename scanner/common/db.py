@@ -133,7 +133,16 @@ class TargetAuthConfig(Base):
     email: Mapped[str] = mapped_column(String(320))
     # Caminho pontuado onde o token está na resposta de login, ex.: "authentication.token".
     token_path: Mapped[str] = mapped_column(String(200), default="token")
+    # "token" (POST JSON -> token) ou "form" (POST formulário -> cookie de sessão).
+    login_mode: Mapped[str] = mapped_column(String(16), default="token", server_default="token")
+    username_field: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    password_field: Mapped[str | None] = mapped_column(String(100), nullable=True)
     protected_path: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    # Checagem A01 (IDOR): e-mail do 2º usuário, recursos privados do dono (um por linha) e o
+    # marcador do dono. A senha do 2º usuário, como a do 1º, nunca é persistida (vem por execução).
+    other_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    idor_resources: Mapped[str | None] = mapped_column(Text, nullable=True)
+    owner_marker: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
@@ -310,12 +319,15 @@ def canonical_routes(urls: Iterable[str]) -> list[str]:
        depende da profundidade alcançada, então o conjunto é o mesmo a cada scan — base da
        consistência. (Custo aceito: uma rota real que repita o NOME de uma pasta, raro, fica de
        fora do scan; nunca gera falso negativo de falha, só evita contar reflexos.)
-    2. Agrupa o resto por assinatura de rota, com representante determinístico (a URL mais curta;
+    2. DESCARTA arquivo estático (imagem/js/css/fonte): não tem superfície de ataque (o scan ativo
+       não o testa) e é justamente o que um SPA que responde 200 para tudo multiplica em toda pasta
+       fantasma. Some da contagem e da memória; o ZAP ainda os busca para o scan passivo.
+    3. Agrupa o resto por assinatura de rota, com representante determinístico (a URL mais curta;
        empate: alfabética) para semear a forma limpa.
     """
     best: dict[str, str] = {}
     for url in urls:
-        if has_repeated_segment(url):
+        if has_repeated_segment(url) or _STATIC_EXT.search(url.lower()):
             continue
         sig = route_signature(url)
         current = best.get(sig)

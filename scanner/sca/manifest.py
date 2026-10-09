@@ -67,15 +67,23 @@ def parse_requirements(text: str) -> list[Component]:
     return out
 
 
+def load_manifest_content(content: str, filename: str) -> list[Component]:
+    """Parseia o manifesto a partir do CONTEÚDO + o nome do arquivo (que decide o formato).
+
+    Permite rodar o SCA com o manifesto vindo de um upload/payload, não só de um arquivo em disco.
+    """
+    name = filename.lower()
+    if name == "package-lock.json":
+        return parse_package_lock(json.loads(content))
+    if name == "package.json":
+        return parse_package_json(json.loads(content))
+    if name.startswith("requirements") and name.endswith(".txt"):
+        return parse_requirements(content)
+    raise ValueError(
+        f"manifesto não suportado: {filename} (use package-lock.json/package.json/requirements.txt)"
+    )
+
+
 def load_manifest(path: str | Path) -> list[Component]:
     p = Path(path)
-    name = p.name.lower()
-    if name == "package-lock.json":
-        return parse_package_lock(json.loads(p.read_text()))
-    if name == "package.json":
-        return parse_package_json(json.loads(p.read_text()))
-    if name.startswith("requirements") and name.endswith(".txt"):
-        return parse_requirements(p.read_text())
-    raise ValueError(
-        f"manifesto não suportado: {p.name} (use package-lock.json/package.json/requirements.txt)"
-    )
+    return load_manifest_content(p.read_text(), p.name)

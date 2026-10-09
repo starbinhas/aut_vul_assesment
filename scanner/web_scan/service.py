@@ -31,7 +31,11 @@ from scanner.common.staging import staging_cleared, stress_cleared
 from scanner.web_scan import policy
 from scanner.web_scan.alerts import alert_to_finding
 from scanner.web_scan.policy import ScanProfile
-from scanner.web_scan.proactive import run_jwt_integrity, run_login_lockout
+from scanner.web_scan.proactive import (
+    run_access_control,
+    run_jwt_integrity,
+    run_login_lockout,
+)
 from scanner.web_scan.zap import (
     HeaderCredential,
     LoginCredential,
@@ -188,7 +192,13 @@ def run_scan(
     # emitem achados JÁ confirmados e vão à parte (não passam pela re-validação, que rebaixaria).
     if login_spec is not None and isinstance(credential, HeaderCredential) and on_proactive:
         found: list[Finding] = []
-        if a07 := run_login_lockout(zap, login_spec, msg.scan_id, msg.target_id):
+        # A07 faz tentativas de senha errada e pode TRAVAR a conta de teste: é alteração de estado
+        # no alvo. Por isso só roda em perfil destrutivo (intrusivo/agressivo, que só rodam em cópia
+        # de teste ou laboratório). Em `safe`/`balanced` (site de cliente) fica de fora — regra #3
+        # da CLAUDE.md: esses perfis não têm regra destrutiva.
+        if profile.destructive and (
+            a07 := run_login_lockout(zap, login_spec, msg.scan_id, msg.target_id)
+        ):
             found.append(a07)
         if login_spec.protected_path:
             protected = urljoin(msg.scope.base_urls[0], login_spec.protected_path)
@@ -203,6 +213,20 @@ def run_scan(
                 )
             ):
                 found.append(a08)
+        # A01 (IDOR): leitura entre dois usuários. Só GET, não destrutivo -> roda em qualquer perfil
+        # (inclusive em cliente). Precisa do 2º usuário e dos recursos privados configurados.
+        if login_spec.idor_resources and login_spec.other_email and login_spec.other_password:
+            resource_urls = [
+                full
+                for path in login_spec.idor_resources
+                if guard.allows(full := urljoin(msg.scope.base_urls[0], path))
+            ]
+            if resource_urls:
+                found.extend(
+                    run_access_control(
+                        zap, credential, login_spec, resource_urls, msg.scan_id, msg.target_id
+                    )
+                )
         if found:
             on_proactive(found)
 
@@ -342,7 +366,14 @@ def _credential(payload: dict[str, Any]) -> HeaderCredential | LoginCredential |
             token_path=tuple(cred.get("token_path", ("authentication", "token"))),
             header_name=cred.get("header_name", "Authorization"),
             header_template=cred.get("header_template", "Bearer {token}"),
+            mode=cred.get("mode", "token"),
+            username_field=cred.get("username_field", "username"),
+            password_field=cred.get("password_field", "password"),
             protected_path=cred.get("protected_path", ""),
+            other_email=cred.get("other_email", ""),
+            other_password=cred.get("other_password", ""),
+            idor_resources=tuple(cred.get("idor_resources", ())),
+            owner_marker=cred.get("owner_marker", ""),
         )
     raise ValueError(f"tipo de credencial não suportado: {kind!r}")
 
