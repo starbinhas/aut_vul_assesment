@@ -15,7 +15,7 @@ A corrida não é escrever features novas. É **tornar reais as capacidades que 
 hoje são de laboratório. Num demo contra um prospect, pelo menos dois itens vendidos **não acham nada
 por construção**. Isso, não a falta de features, é o que nos faz perder.
 
-## Entregue nesta sessão (verificado: 330 testes, ruff, mypy limpos)
+## Entregue nesta sessão (verificado: 332 testes, ruff, mypy limpos)
 
 - [x] **Assertividade e constância — benchmark com portão de regressão** (`tests/benchmark.py`): mede o
       que o scanner PROVA por família OWASP e compara com um baseline gravado; **falha (saída != 0) se
@@ -62,6 +62,9 @@ por construção**. Isso, não a falta de features, é o que nos faz perder.
 - [x] **Mais famílias de prova** (P2): validadores de **path traversal** (CWE 22, prova mínima com
       `/etc/passwd`) e **SSTI** (conta aritmética aleatória avaliada). Determinísticos, não destrutivos
       (só GET), 6 testes. Cobertura de prova passou de 5 para 7 famílias.
+- [x] **SQLi booleano (cego)**: o validador de SQLi, sem erro de banco visível, infere pela resposta
+      (condição verdadeira preserva, falsa altera) — só leitura, confirma só com sinal forte para não
+      gerar falso positivo. 2 testes.
 
 **Ainda aberto:** login com CSRF token no formulário (#5, sub-item); XSS armazenado/DOM e SQLi
 booleano (precisam de navegador headless); **produto Pentest** (agente dentro da trava) — produto novo

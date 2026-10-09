@@ -70,6 +70,27 @@ def test_sqli_no_error_is_unconfirmed() -> None:
     assert v.outcome is Outcome.UNCONFIRMED
 
 
+def test_sqli_boolean_confirmed_when_true_keeps_and_false_changes() -> None:
+    long_body = "<table>" + "<tr>linha</tr>" * 60 + "</table>"
+
+    def responder(url: str):
+        value = q(url)
+        if "='2" in value:  # condição FALSA -> resposta alterada (vazia)
+            return resp("")
+        return resp(long_body)  # original/verdadeira -> resposta preservada; sem erro de banco
+
+    f = make_finding(rule_id="40018", cwe=89, url=LAB_URL + "/rest/products/search?q=abc")
+    v = sqli_error.validate(f, FakeClient(responder))
+    assert v.outcome is Outcome.CONFIRMED and v.proof is not None
+
+
+def test_sqli_boolean_unconfirmed_when_no_difference() -> None:
+    # Verdadeira e falsa dão a mesma resposta -> sem sinal -> não confirma (evita falso positivo).
+    f = make_finding(rule_id="40018", cwe=89)
+    v = sqli_error.validate(f, FakeClient(lambda url: resp("<p>estável</p>")))
+    assert v.outcome is Outcome.UNCONFIRMED
+
+
 def test_sqli_never_sends_destructive_payloads() -> None:
     client = FakeClient(lambda url: resp("[]"))
     sqli_error.validate(make_finding(rule_id="40018", cwe=89), client)
