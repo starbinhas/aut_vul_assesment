@@ -30,6 +30,40 @@
 </div>
 {% endif %}
 
+<ol class="steps" aria-label="Passo a passo do scan">
+  <li class="done">
+    <span class="n">1</span>
+    <span class="b"><strong>Site cadastrado</strong> <span class="muted mono small">{{ t.base_url }}</span></span>
+  </li>
+  {% if t.verified_at %}
+  <li class="done">
+    <span class="n">2</span>
+    <span class="b"><strong>Domínio verificado</strong> <span class="muted">autorização comprovada</span></span>
+  </li>
+  {% else %}
+  <li class="now">
+    <span class="n">2</span>
+    <span class="b"><strong>Verifique o domínio</strong> <span class="muted">crie o registro DNS abaixo e clique em verificar — é a sua autorização</span></span>
+  </li>
+  {% endif %}
+  {% if not t.verified_at %}
+  <li class="pending">
+    <span class="n">3</span>
+    <span class="b"><strong>Rodar o scan</strong> <span class="muted">liberado depois da verificação</span></span>
+  </li>
+  {% elif running %}
+  <li class="now">
+    <span class="n">3</span>
+    <span class="b"><strong>Scan em andamento</strong> <a href="/scans/{{ running.scan_id }}">acompanhar</a></span>
+  </li>
+  {% else %}
+  <li class="now">
+    <span class="n">3</span>
+    <span class="b"><strong>Rodar o scan</strong> <a href="#novo-scan">escolher o nível e iniciar</a></span>
+  </li>
+  {% endif %}
+</ol>
+
 {% if not t.verified_at %}
 <section class="section">
   <div class="split">

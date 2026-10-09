@@ -15,7 +15,7 @@ A corrida não é escrever features novas. É **tornar reais as capacidades que 
 hoje são de laboratório. Num demo contra um prospect, pelo menos dois itens vendidos **não acham nada
 por construção**. Isso, não a falta de features, é o que nos faz perder.
 
-## Entregue nesta sessão (verificado: 332 testes, ruff, mypy limpos)
+## Entregue nesta sessão (verificado: 335 testes, ruff, mypy limpos)
 
 - [x] **Assertividade e constância — benchmark com portão de regressão** (`tests/benchmark.py`): mede o
       que o scanner PROVA por família OWASP e compara com um baseline gravado; **falha (saída != 0) se
@@ -65,6 +65,12 @@ por construção**. Isso, não a falta de features, é o que nos faz perder.
 - [x] **SQLi booleano (cego)**: o validador de SQLi, sem erro de banco visível, infere pela resposta
       (condição verdadeira preserva, falsa altera) — só leitura, confirma só com sinal forte para não
       gerar falso positivo. 2 testes.
+- [x] **CRLF / injeção de cabeçalho** (CWE 93/113): injeta um cabeçalho sentinela e confirma se ele
+      volta na resposta. Cobertura de prova agora em **8 famílias**. 3 testes.
+- [x] **Passo a passo do scan na interface** (`site_detail.html` + `.steps` no CSS): indicador de
+      etapas no topo (1 site cadastrado → 2 verificar domínio → 3 rodar scan), com a etapa atual em
+      destaque. **Pendente: conferência visual com `tests.ui_shots`** (o stack não roda nesta sessão);
+      a tela renderiza sem erro e os testes passam, mas o visual precisa de captura antes de ir ao ar.
 
 **Ainda aberto:** login com CSRF token no formulário (#5, sub-item); XSS armazenado/DOM e SQLi
 booleano (precisam de navegador headless); **produto Pentest** (agente dentro da trava) — produto novo

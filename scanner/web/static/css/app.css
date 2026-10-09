@@ -321,6 +321,18 @@ pre {
 .record:last-child { border-bottom: 0; }
 .record .k { font-size: 13px; color: var(--ink-faint); }
 .record .v { font: 400 13.5px var(--font-mono); word-break: break-all; }
+
+/* Passo a passo do scan: orienta onde o usuário está e qual a próxima ação. */
+.steps { list-style: none; margin: var(--s-5) 0; padding: 0; }
+.steps li { display: flex; align-items: baseline; gap: var(--s-3); padding: var(--s-3) 0; border-bottom: 1px solid var(--line); }
+.steps li:last-child { border-bottom: 0; }
+.steps .n { flex: none; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--line-strong); color: var(--ink-faint); font: 400 13px var(--font-text); display: inline-flex; align-items: center; justify-content: center; }
+.steps .b { flex: 1 1 auto; min-width: 0; }
+.steps .b strong { font-weight: 500; color: var(--ink); }
+.steps li.pending { color: var(--ink-faint); }
+.steps li.pending .b strong { color: var(--ink-faint); }
+.steps li.done .n { border-color: #2d5a3e; color: var(--ok); }
+.steps li.now .n { border-color: var(--accent); color: var(--accent); }
 @media (max-width: 560px) { .record { grid-template-columns: 1fr; gap: 4px; } }
 
 .checklist { list-style: none; margin: 0; padding: 0; counter-reset: c; }

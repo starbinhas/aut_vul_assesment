@@ -6,6 +6,7 @@ from scanner.common.models import Outcome, Severity, Status
 from scanner.validation.service import validate_one
 from scanner.validation.validators import (
     cookies,
+    crlf,
     headers,
     open_redirect,
     path_traversal,
@@ -274,4 +275,32 @@ def test_ssti_unconfirmed_when_only_reflected() -> None:
 def test_ssti_post_is_not_replayed() -> None:
     client = FakeClient(lambda url: resp("156"))
     v = ssti.validate(_ssti_finding(method="POST"), client, numbers=(12, 13))
+    assert v.outcome is Outcome.UNCONFIRMED and client.calls == []
+
+
+# --- CRLF / injeção de cabeçalho ---------------------------------------------------------
+
+
+def _crlf_finding(**kw):
+    return make_finding(
+        rule_id="40003", cwe=93, url=LAB_URL + "/page?next=home", param="next", **kw
+    )
+
+
+def test_crlf_confirmed_when_injected_header_reflected() -> None:
+    sent = "pitchysentinel"
+    # Servidor vulnerável: devolve o cabeçalho que o parâmetro injetou.
+    client = FakeClient(lambda url: resp(headers={"X-Pitchy-CRLF": sent}))
+    v = crlf.validate(_crlf_finding(), client, sentinel=sent)
+    assert v.outcome is Outcome.CONFIRMED and v.proof is not None
+
+
+def test_crlf_unconfirmed_when_not_reflected() -> None:
+    v = crlf.validate(_crlf_finding(), FakeClient(lambda url: resp()), sentinel="x")
+    assert v.outcome is Outcome.UNCONFIRMED
+
+
+def test_crlf_post_is_not_replayed() -> None:
+    client = FakeClient(lambda url: resp(headers={"X-Pitchy-CRLF": "x"}))
+    v = crlf.validate(_crlf_finding(method="POST"), client, sentinel="x")
     assert v.outcome is Outcome.UNCONFIRMED and client.calls == []
