@@ -10,6 +10,7 @@ from scanner.common.grouping import STATUS_STRENGTH, group_findings
 from scanner.common.masking import mask_obj, mask_text
 from scanner.common.models import Finding, Severity, Status
 from scanner.common.owasp import CATEGORIES, OWASP_VERSION
+from scanner.report.cvss import cvss_for
 from scanner.report.models import (
     AffectedLocation,
     DiscardedItem,
@@ -50,12 +51,16 @@ def build_report(
     for group in group_findings(reported):
         rep = group.representative
         remediation, source = remediate(rep)
+        # CVSS representativo da classe, coerente com a severidade do grupo (não da ferramenta).
+        cvss_score, cvss_vector = cvss_for(rep.model_copy(update={"severity": group.severity}))
         items.append(
             ReportItem(
                 group_key=group.key,
                 finding=_masked(rep),
                 severity=group.severity,
                 status=group.status,
+                cvss_score=cvss_score,
+                cvss_vector=cvss_vector,
                 locations=[
                     AffectedLocation(
                         finding_id=f.finding_id,
@@ -73,6 +78,10 @@ def build_report(
                 remediation_source=source,
             )
         )
+
+    # Ordena o que importa primeiro: severidade (crítica → informativa) e, dentro dela, o mais
+    # provado antes. Assim o ruído informativo afunda e não disputa o topo com as falhas reais.
+    items.sort(key=lambda i: (-i.severity.rank, -STATUS_STRENGTH[i.status], i.group_key))
 
     by_sev = Counter(i.severity.value for i in items)
     by_status = Counter(i.status.value for i in items)

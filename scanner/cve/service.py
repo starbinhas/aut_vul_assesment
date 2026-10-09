@@ -42,6 +42,22 @@ def scan_cves(target_url: str, scan_id: str, target_id: str) -> list[Finding]:
     return parse_nuclei_jsonl(output, scan_id, target_id)
 
 
+def scan_targets(targets: list[str], scan_id: str, target_id: str) -> list[Finding]:
+    """Roda o nuclei em cada alvo e agrega os candidatos, deduplicados por `finding_id`.
+
+    Antes, a etapa 3 só varria um alvo. Agora varre todos os `cve_targets` do recon (base_urls +
+    serviços web em portas descobertas). Se o binário não existir, erra claro no 1º alvo.
+    """
+    findings: list[Finding] = []
+    seen: set[str] = set()
+    for target_url in targets:
+        for f in scan_cves(target_url, scan_id, target_id):
+            if f.finding_id not in seen:
+                seen.add(f.finding_id)
+                findings.append(f)
+    return findings
+
+
 def handle(
     session: Session,
     msg: StageMessage,
@@ -57,9 +73,9 @@ def handle(
     with sessions() as authz:
         scope = check_authorized(authz, msg)
     set_scan_status(sessions, msg.scan_id, ScanStatus.CVE_SCANNING, "cve")
-    target_url = scope.base_urls[0]
+    targets = list(msg.payload.get("cve_targets") or scope.base_urls)
     try:
-        findings = scan_cves(target_url, msg.scan_id, msg.target_id)
+        findings = scan_targets(targets, msg.scan_id, msg.target_id)
     except RuntimeError as exc:
         log.error("nuclei indisponível", extra={"error": str(exc)})
         findings = []

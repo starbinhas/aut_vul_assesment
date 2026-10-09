@@ -28,9 +28,13 @@ agendador) e a interface web (cliente e admin). O contrato entre etapas continua
    SSRF/RFI/OAST, **sem** regras de sobrecarga) **só roda numa cópia de teste (homologação) do
    cliente** com autorização assinada, aprovada pelo time e dentro da validade
    (`scanner/common/staging.py`, `staging_cleared`), e nunca no site oficial. `aggressive` (tudo,
-   inclusive DoS) **só roda contra hosts de laboratório**. A trava está em `web_scan/service.py`
-   (`resolve_profile` + `policy.is_cleared`), que recusa o perfil contra qualquer outro alvo. Sempre
-   valem: limite de threads/requisições por segundo e tempo máximo. A validação (etapa 5) usa provas
+   inclusive DoS/sobrecarga) **só roda contra hosts de laboratório OU numa cópia de teste
+   descartável liberada para resiliência** (`scanner/common/staging.py`, `stress_cleared`): o
+   cliente assina um termo aceitando que a cópia pode ficar fora do ar e que ela está em infra
+   separada do site oficial (nível `stress` da autorização), aprovado pelo time e dentro da
+   validade. **Nunca no site oficial.** A trava está em `web_scan/service.py` (`resolve_profile` +
+   `policy.is_cleared`), que recusa o perfil contra qualquer outro alvo. Sempre valem: limite de
+   threads/requisições por segundo e tempo máximo. A validação (etapa 5) usa provas
    não destrutivas: nada de apagar/alterar dados, nada de DoS, nada de extrair dados reais além do
    mínimo para provar.
 4. **Teste local só contra alvos de laboratório** (`docker-compose.lab.yml`: OWASP Juice Shop,
@@ -45,17 +49,20 @@ agendador) e a interface web (cliente e admin). O contrato entre etapas continua
 - Faz: dirige o ZAP via API (spider tradicional + AJAX spider para SPAs, scan passivo, scan ativo
   com política controlada). Áreas logadas só se o cliente forneceu credenciais.
 - Perfil do scan vem no `payload.profile` da mensagem (`safe` por padrão). `safe`/`balanced` em
-  cliente; `intrusive` só em cópia de teste autorizada; `aggressive` só laboratório (trava em
-  `resolve_profile`, que consulta a autorização no banco). Na interface (`web/services.py`,
-  `profiles_for`, conferido de novo em `start_scan` contra POST forjado): o intrusivo aparece só na
-  página da cópia liberada; o agressivo só para **admin** e só em **site de laboratório**; cliente
-  nunca vê o agressivo. Também sai pela CLI de laboratório (`tests/lab_scan.py --profile`).
+  cliente; `intrusive` só em cópia de teste autorizada (nível `intrusive`); `aggressive` só em
+  laboratório ou cópia liberada para resiliência (nível `stress`) (trava em `resolve_profile`, que
+  consulta a autorização no banco). Na interface (`web/services.py`, `profiles_for`, conferido de
+  novo em `start_scan` contra POST forjado): o intrusivo aparece só na página da cópia liberada; o
+  agressivo só na página de uma cópia liberada para resiliência (ou, para **admin**, em **site de
+  laboratório**); no site oficial nenhum dos dois aparece. Também sai pela CLI de laboratório (`tests/lab_scan.py --profile`).
   "Laboratório" tem uma definição só: `policy.is_lab_scope` contra `settings.lab_hosts`.
 - Cópia de teste (`web/staging.py`, rotas em `web/routes/staging.py`): passo a passo para cliente
   leigo — mensagem pronta para quem cuida do site, prova de domínio da cópia (DNS TXT), checklist em
   linguagem simples + termo (versão e hash gravados), revisão do time em `/admin/copias-de-teste`.
   Só alguém da organização assina (o admin não assina pelo cliente). Mudou o texto do termo →
-  incrementar `TERM_VERSION`.
+  incrementar `TERM_VERSION`. A autorização tem nível (`scope_level`): `intrusive` (padrão) ou
+  `stress` (resiliência/DoS), este com checklist e termo mais fortes — infra separada e aceite de
+  indisponibilidade — e é o único que libera o perfil `aggressive` (`stress_cleared`).
 - Sai: candidatos a falha (`status: candidate`) no formato do contrato, cada um com a requisição e a
   resposta que o expuseram.
 - Um scan = uma sessão nova do ZAP (`core.new_session`) e um contexto próprio. Nunca rodar dois
@@ -180,14 +187,20 @@ Mensagens em Redis Streams, payload JSON, independente de linguagem (os colegas 
 - Os nomes dos streams acima são os oficiais.
 
 > **Etapa 1 é nossa (via interface):** a verificação de domínio (DNS TXT, `web/verification.py`) e a
-> trava de escopo são a etapa 1. **A integrar:** ao iniciar um scan, a etapa 1 deve disparar o
-> pipeline completo (hoje publica só `scan.web.requested`; faltam `2 recon` e `3 CVEs` à frente).
+> trava de escopo são a etapa 1. Ao iniciar um scan, a etapa 1 publica `scan.recon.requested`
+> (`web/services.py`); o recon (etapa 2) então dispara `scan.cve.requested` e `scan.web.requested`
+> (`recon/service.py`). O pipeline já roda ponta a ponta. **A integrar ainda:** levar as portas
+> descobertas pelo naabu adiante (hoje o CVE só varre `base_urls[0]`) — ver `docs/plano-de-acao.md`.
 > Achados das nossas checagens próprias usam `source.tool = "scanner"` (contrato 1.1).
 
 ## LLM (etapa 6)
 
-- SDK oficial `anthropic` em Python. Modelo padrão: `claude-opus-5-5` (ID exato, sem sufixo de data).
-  Trocar de modelo é decisão do time, medida contra o conjunto de avaliação.
+- SDK oficial `anthropic` em Python. Modelo-alvo: `claude-opus-5-5` (ID exato, sem sufixo de data).
+  Trocar de modelo é decisão do time, medida contra o conjunto de avaliação (`scanner/report/eval.py`).
+  **Estado atual (MVP):** por falta de chave Anthropic, o `.env` vivo roda um provedor compatível com
+  OpenAI (Groq, `openai/gpt-oss-120b`), via `OpenAICompatibleWriter`. Enquanto for assim, **nenhum
+  material voltado ao cliente pode dizer "Claude"** — dizer só "IA". Migrar para Claude quando houver
+  chave e o eval confirmar o ganho.
 - Saída estruturada com `client.messages.parse()` + modelo Pydantic — nunca fazer parsing de texto livre.
 - Thinking adaptativo; definir `output_config.effort` explicitamente (o padrão do Opus 5.5 é `medium`).
 - Tratar `stop_reason == "refusal"` (o classificador `cyber` pode recusar textos sobre

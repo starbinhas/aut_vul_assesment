@@ -25,7 +25,7 @@ from scanner.common.db import (
 from scanner.common.models import Severity, Status
 from scanner.common.owasp import CATEGORIES
 from scanner.common.scope import scope_for
-from scanner.common.staging import staging_cleared
+from scanner.common.staging import staging_cleared, stress_cleared
 from scanner.report import manual_checks
 from scanner.report.models import Report as ReportModel
 from scanner.report.models import ReportItem
@@ -271,7 +271,9 @@ def site_detail(
         if s.status == ScanStatus.DONE and (rep := reports.get(s.scan_id))
     ]
     line, area = trend_paths([n for _, n in history])
-    copy_cleared = staging_cleared(db, target.target_id, scope_for(target).allowed_hosts)
+    hosts = scope_for(target).allowed_hosts
+    copy_cleared = staging_cleared(db, target.target_id, hosts)
+    stress_ready = stress_cleared(db, target.target_id, hosts)
     return render(
         request,
         "client/site_detail.html",
@@ -285,7 +287,9 @@ def site_detail(
         record_name=verification.record_name(target.domain),
         record_value=verification.record_value(target.verification_token),
         recurrence=RECURRENCE,
-        profiles=profiles_for(viewer, target, request.app.state.settings.lab_hosts, copy_cleared),
+        profiles=profiles_for(
+            viewer, target, request.app.state.settings.lab_hosts, copy_cleared, stress_ready
+        ),
         staging=staging_view(db, target, request.app.state.settings.lab_hosts),
         profile_info=labels.PROFILE_INFO,
         limits=_scan_limits(request.app.state.settings, target),
@@ -326,8 +330,14 @@ def site_auth_config(
     target_id: str,
     login_url: str = Form(""),
     email: str = Form(""),
+    login_mode: str = Form("token"),
     token_path: str = Form("token"),
+    username_field: str = Form("username"),
+    password_field: str = Form("password"),
     protected_path: str = Form(""),
+    other_email: str = Form(""),
+    idor_resources: str = Form(""),
+    owner_marker: str = Form(""),
     viewer: Viewer = Depends(current_viewer),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -345,26 +355,46 @@ def site_auth_config(
             db.add(row)
         row.login_url = login_url
         row.email = email
+        row.login_mode = "form" if login_mode == "form" else "token"
         row.token_path = token_path.strip() or "token"
+        row.username_field = username_field.strip() or "username"
+        row.password_field = password_field.strip() or "password"
         row.protected_path = protected_path.strip() or None
+        row.other_email = other_email.strip() or None
+        row.idor_resources = idor_resources.strip() or None
+        row.owner_marker = owner_marker.strip() or None
         action = "login.set"
     audit(db, viewer, action, org_id=target.org_id, object_type="site", object_id=target_id)
     return RedirectResponse(f"/sites/{target_id}#login-teste", 303)
 
 
-def _credential_for(db: Session, target_id: str, password: str) -> dict[str, object] | None:
-    """Monta a credencial da execução a partir da config salva + a senha digitada agora."""
+def _credential_for(
+    db: Session, target_id: str, password: str, other_password: str = ""
+) -> dict[str, object] | None:
+    """Monta a credencial da execução a partir da config salva + a(s) senha(s) digitada(s) agora."""
     cfg = db.get(TargetAuthConfig, target_id)
     if cfg is None or not password:
         return None
-    return {
+    cred: dict[str, object] = {
         "type": "login",
         "login_url": cfg.login_url,
         "email": cfg.email,
         "password": password,
+        "mode": cfg.login_mode,
         "token_path": tuple(cfg.token_path.split(".")),
+        "username_field": cfg.username_field or "username",
+        "password_field": cfg.password_field or "password",
         "protected_path": cfg.protected_path or "",
     }
+    # A01 (IDOR): só entra se houver 2º usuário, a senha dele e recursos configurados.
+    raw = (cfg.idor_resources or "").replace(",", "\n")
+    resources = tuple(line.strip() for line in raw.splitlines() if line.strip())
+    if cfg.other_email and other_password and resources:
+        cred["other_email"] = cfg.other_email
+        cred["other_password"] = other_password
+        cred["idor_resources"] = resources
+        cred["owner_marker"] = cfg.owner_marker or ""
+    return cred
 
 
 @router.post("/sites/{target_id}/scans")
@@ -373,12 +403,13 @@ def site_scan(
     target_id: str,
     profile: str = Form("safe"),
     password: str = Form(""),
+    other_password: str = Form(""),
     viewer: Viewer = Depends(current_viewer),
     db: Session = Depends(get_db),
 ) -> Response:
     target = get_target(db, viewer, target_id)
     lab_hosts = request.app.state.settings.lab_hosts
-    credential = _credential_for(db, target_id, password)
+    credential = _credential_for(db, target_id, password, other_password)
     try:
         scan = start_scan(
             db, viewer, target, request.app.state.publish, lab_hosts, profile, credential

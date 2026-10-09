@@ -51,6 +51,13 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr = SecretStr("")
     llm_model: str = "claude-opus-5-5"
     llm_effort: Literal["low", "medium", "high", "xhigh", "max"] = "high"
+    # Provedor do LLM da etapa 6. "anthropic" = Claude (padrão do produto); "openai_compatible" =
+    # qualquer API no protocolo OpenAI (Groq, Gemini, Ollama...) como MVP gratuito; "none" = só
+    # catálogo. Para Groq: provider=openai_compatible, base_url=https://api.groq.com/openai/v1,
+    # model=llama-3.3-70b-versatile, e a chave gratuita em llm_api_key.
+    llm_provider: Literal["anthropic", "openai_compatible", "none"] = "none"
+    llm_api_key: SecretStr = SecretStr("")
+    llm_base_url: str = ""
     # Fontes que precisam ter entregue candidatos antes de gerar o relatório (PROVISÓRIO).
     report_required_tools: list[str] = ["zap", "nuclei"]
 

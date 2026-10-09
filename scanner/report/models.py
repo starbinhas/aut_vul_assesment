@@ -49,6 +49,8 @@ class ReportItem(BaseModel):
     status: Status
     locations: list[AffectedLocation]
     owasp_name: str | None
+    cvss_score: float | None = None
+    cvss_vector: str | None = None
     remediation: Remediation
     remediation_source: RemediationSource
 

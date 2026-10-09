@@ -4,14 +4,15 @@
 {% set steps = [
   ("Criar a cópia", "Quem cuida do site faz uma cópia num endereço próprio."),
   ("Comprovar o domínio da cópia", "Um registro DNS, igual ao do site oficial."),
-  ("Confirmar e assinar", "Seis confirmações em linguagem simples e o termo."),
+  ("Confirmar e assinar", "Confirmações em linguagem simples e o termo."),
   ("Revisão do time", "Conferimos a cópia antes de liberar, em até 1 dia útil."),
 ] %}
+{% set level_label = {"intrusive": "intrusivo", "stress": "de resiliência"} %}
 <div class="page-head">
   <div>
     <p class="eyebrow"><a href="/sites">Sites</a> / <a href="/sites/{{ t.target_id }}">{{ t.domain }}</a> / cópia de teste</p>
-    <h1>Teste intrusivo numa cópia do site</h1>
-    <p class="lede">O teste mais completo grava dados e força o servidor. Para não arriscar o site oficial, ele roda numa cópia que você pode apagar depois.</p>
+    <h1>Teste aprofundado numa cópia do site</h1>
+    <p class="lede">Os testes mais completos gravam dados e forçam o servidor. Para não arriscar o site oficial, eles rodam numa cópia que você pode apagar depois.</p>
   </div>
 </div>
 
@@ -32,7 +33,7 @@
 
     {# --- liberado ------------------------------------------------------------------- #}
     {% if step == 5 %}
-      <h2>Teste intrusivo liberado em {{ copy.domain }}</h2>
+      <h2>Teste {{ level_label[row.scope_level] }} liberado em {{ copy.domain }}</h2>
       <p class="muted">Vale até {{ row.valid_until|dt }}. Depois disso a cópia volta a aceitar só os níveis seguro e completo.</p>
       <div class="row mt-4">
         <a class="btn primary" href="/sites/{{ copy.target_id }}#novo-scan">Ir para a cópia e iniciar o teste</a>
@@ -45,7 +46,7 @@
     {# --- esperando o time ------------------------------------------------------------ #}
     {% elif step == 4 %}
       <h2>Recebemos. Agora é com o time.</h2>
-      <p class="muted">Conferimos a cópia e o que você confirmou, em até 1 dia útil. Quando aprovarmos, o nível intrusivo aparece na página de {{ copy.domain }}.</p>
+      <p class="muted">Conferimos a cópia e o que você confirmou, em até 1 dia útil. Quando aprovarmos, o teste {{ level_label[row.scope_level] }} aparece na página de {{ copy.domain }}.</p>
       <dl class="hml-facts">
         <dt>Assinado por</dt><dd>{{ row.signer_name }} ({{ row.signer_role }}), {{ row.signed_at|dt }}</dd>
         <dt>Contato durante o teste</dt><dd>{{ row.emergency_contact }}</dd>
@@ -99,7 +100,7 @@
     {# --- passo 3: assinar (ou assinar de novo) ---------------------------------------- #}
     {% elif row.status == "revoked" or expired %}
       <h2>{{ "A autorização venceu" if expired else "A autorização foi encerrada" }}</h2>
-      <p class="muted">Para testar {{ copy.domain }} de novo no nível intrusivo, confirme os itens e assine outra vez. A cópia continua cadastrada.</p>
+      <p class="muted">Para testar {{ copy.domain }} de novo, confirme os itens e assine outra vez. A cópia continua cadastrada.</p>
       <form method="post" action="/copias-de-teste/{{ row.auth_id }}/renovar" class="mt-4">
         <input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}">
         <button class="btn primary" type="submit">Pedir nova autorização</button>
@@ -124,8 +125,25 @@
       {% if viewer.is_admin %}
       <div class="notice mt-4">Quem assina é alguém da empresa dona do site. Mande este link para a pessoa responsável.</div>
       {% else %}
+      <h3 class="mt-6">Alcance do teste</h3>
+      <div class="hml-levels" role="radiogroup" aria-label="Alcance do teste">
+        <a class="level-card{{ ' active' if level != 'stress' }}" href="?nivel=intrusive#passo" {% if level != 'stress' %}aria-current="true"{% endif %}>
+          <span class="t">Intrusivo</span>
+          <span class="d">Grava dados e faz o servidor acessar endereços externos. Sem testes de sobrecarga.</span>
+        </a>
+        <a class="level-card danger{{ ' active' if level == 'stress' }}" href="?nivel=stress#passo" {% if level == 'stress' %}aria-current="true"{% endif %}>
+          <span class="t">Resiliência</span>
+          <span class="d">Tudo do intrusivo mais os testes de sobrecarga. Pode derrubar a cópia.</span>
+        </a>
+      </div>
+
+      {% if level == "stress" %}
+      <div class="notice warn mt-4" role="status"><strong>A cópia pode ficar fora do ar.</strong> O teste de resiliência tenta derrubar o servidor de propósito. Combine um horário e garanta que a cópia está num servidor separado do site oficial.</div>
+      {% endif %}
+
       <form method="post" action="/copias-de-teste/{{ row.auth_id }}/assinar" class="mt-5">
         <input type="hidden" name="{{ csrf_field }}" value="{{ csrf }}">
+        <input type="hidden" name="level" value="{{ level }}">
         <fieldset class="hml-confirms">
           <legend class="sr-only">Confirmações</legend>
           {% for key, text, why in checklist %}
@@ -165,7 +183,7 @@
           </div>
           <label class="hml-confirm hml-accept">
             <input type="checkbox" name="accept" value="yes" required>
-            <span><span class="t">Li o termo e autorizo o teste intrusivo em {{ copy.domain }}.</span></span>
+            <span><span class="t">Li o termo e autorizo o teste {{ level_label[level] }} em {{ copy.domain }}.</span></span>
           </label>
         </div>
         <button class="btn primary mt-4" type="submit">Assinar e enviar para o time</button>
@@ -178,8 +196,13 @@
   <aside class="muted small">
     <p class="section-label">Por que não no site oficial</p>
     <p>O teste intrusivo cadastra usuários, publica textos de teste e repete formulários centenas de vezes. Um backup devolve o banco, mas não desfaz os e-mails que chegaram aos seus clientes nem o tempo com o site lento.</p>
+    {% if level == "stress" %}
+    <p class="section-label mt-6">O que a resiliência acha a mais</p>
+    <p>Se o servidor pode ser derrubado por uma única requisição (Buffer Overflow, Billion Laughs e afins). O teste tenta derrubá-lo de propósito — por isso só numa cópia descartável, em servidor separado.</p>
+    {% else %}
     <p class="section-label mt-6">O que ele acha a mais</p>
     <p>Falhas que só aparecem gravando dados ou fazendo o servidor acessar endereços externos: XSS que fica salvo na página, SSRF, inclusão remota, Log4Shell.</p>
+    {% endif %}
     <p class="section-label mt-6">O site oficial continua coberto</p>
     <p>Os níveis seguro e completo seguem rodando em {{ t.domain }}, sem gravar dados.</p>
   </aside>

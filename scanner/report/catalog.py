@@ -197,6 +197,84 @@ _COOKIE = Remediation(
 )
 
 
+_INFO_DISCLOSURE = Remediation(
+    what_it_is=(
+        "O site revela detalhes internos sobre si mesmo — versões de servidor/framework, caminhos de "
+        "arquivos, mensagens de erro detalhadas ou arquivos de código (como source maps). Sozinho não "
+        "é uma invasão, mas entrega ao atacante o mapa da sua aplicação."
+    ),
+    why_it_matters=(
+        "Sabendo a tecnologia e a versão exatas, o atacante procura vulnerabilidades conhecidas "
+        "(CVEs) justo para essa versão e economiza tempo de reconhecimento. É o primeiro passo de "
+        "quase todo ataque direcionado."
+    ),
+    how_to_fix=[
+        FixStep(
+            title="Remova versões e banners das respostas",
+            detail="Esconda o cabeçalho Server e o X-Powered-By, e não exponha a versão do framework.",
+            snippet=(
+                "# nginx\nserver_tokens off;\nproxy_hide_header X-Powered-By;\n\n"
+                "// Express\napp.disable('x-powered-by');\n\n"
+                "# Apache (httpd.conf)\nServerTokens Prod\nServerSignature Off"
+            ),
+            snippet_language="text",
+        ),
+        FixStep(
+            title="Devolva erros genéricos",
+            detail="Mensagens de erro e stack traces vão para o log do servidor, nunca para o usuário.",
+        ),
+        FixStep(
+            title="Não publique arquivos de desenvolvimento",
+            detail=(
+                "Em produção, não sirva source maps (.map), .git, backups (.bak) nem listagem de "
+                "pastas. Gere o build sem source maps ou bloqueie o acesso a eles."
+            ),
+            snippet="location ~ \\.map$ { deny all; }",
+            snippet_language="nginx",
+        ),
+    ],
+    how_to_verify=(
+        "curl -sI https://SEU-SITE/ | grep -i -E 'server|x-powered-by'  # não deve mostrar versão"
+    ),
+    references=[
+        "https://owasp.org/www-project-web-security-testing-guide/",
+        "https://cwe.mitre.org/data/definitions/200.html",
+    ],
+)
+
+_DIR_LISTING = Remediation(
+    what_it_is=(
+        "Uma pasta do site mostra a lista de todos os arquivos que ela contém quando acessada "
+        "diretamente, em vez de negar o acesso."
+    ),
+    why_it_matters=(
+        "O atacante navega pelos arquivos e encontra backups, credenciais, código-fonte e documentos "
+        "que não deveriam estar acessíveis — sem precisar adivinhar nomes."
+    ),
+    how_to_fix=[
+        FixStep(
+            title="Desligue a listagem de diretórios",
+            detail="Desative o autoindex no servidor web; se precisar servir arquivos, liste só os permitidos.",
+            snippet=(
+                "# nginx\nautoindex off;\n\n"
+                "# Apache (.htaccess ou VirtualHost)\nOptions -Indexes\n\n"
+                "// Express: remova/evite serve-index; use express.static sem índice de pasta"
+            ),
+            snippet_language="text",
+        ),
+        FixStep(
+            title="Tire os arquivos sensíveis da pasta pública",
+            detail="Backups, dumps e credenciais não devem ficar dentro da raiz servida pela web.",
+        ),
+    ],
+    how_to_verify="Acesse a URL da pasta no navegador: deve dar 403/404, não a lista de arquivos.",
+    references=[
+        "https://cwe.mitre.org/data/definitions/548.html",
+        "https://owasp.org/www-community/attacks/Forced_browsing",
+    ],
+)
+
+
 def _generic(f: Finding) -> Remediation:
     return Remediation(
         what_it_is=f.title,
@@ -228,8 +306,22 @@ _BY_ZAP_RULE = {
     "10010": _COOKIE,
     "10011": _COOKIE,
     "10054": _COOKIE,
+    "10036": _INFO_DISCLOSURE,  # versão do servidor no cabeçalho
+    "10037": _INFO_DISCLOSURE,  # cabeçalho Server revela software
+    "10096": _INFO_DISCLOSURE,  # timestamp exposto
+    "10027": _INFO_DISCLOSURE,  # informação suspeita no código-fonte
 }
-_BY_CWE = {79: _XSS, 89: _SQLI, 1021: _XFO, 614: _COOKIE, 1004: _COOKIE, 319: _HSTS}
+_BY_CWE = {
+    79: _XSS,
+    89: _SQLI,
+    1021: _XFO,
+    614: _COOKIE,
+    1004: _COOKIE,
+    319: _HSTS,
+    200: _INFO_DISCLOSURE,  # exposição de informação (fingerprint de tecnologia, versões, erros)
+    538: _INFO_DISCLOSURE,  # informação em arquivos/pastas acessíveis
+    548: _DIR_LISTING,  # listagem de diretório habilitada
+}
 
 
 def static_remediation(f: Finding) -> Remediation:

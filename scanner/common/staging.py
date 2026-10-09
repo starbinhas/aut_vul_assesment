@@ -1,5 +1,7 @@
-"""Cópia de teste (homologação) autorizada: o único lugar fora do laboratório onde o perfil
-intrusivo (que grava dados e faz o alvo sair para a internet) pode rodar.
+"""Cópia de teste (homologação) autorizada: o único lugar fora do laboratório onde os perfis que
+causam dano podem rodar. Dois níveis (`scope_level`): `intrusive` grava dados e faz o alvo sair
+para a internet; `stress` acrescenta os testes de sobrecarga/DoS e exige que o cliente aceite que
+a cópia pode ficar fora do ar (libera o perfil agressivo, via `stress_cleared`).
 
 Regra 3 do CLAUDE.md: nada que grave dados roda em produção. O cliente libera o intrusivo para uma
 CÓPIA do site quando, nesta ordem:
@@ -26,6 +28,12 @@ REQUESTED = "requested"  # assinada; esperando o time
 APPROVED = "approved"  # liberada até `valid_until`
 REJECTED = "rejected"  # o time recusou (motivo em `review_note`); o cliente pode corrigir
 REVOKED = "revoked"  # encerrada antes do prazo (cliente ou time)
+
+# Até onde a autorização vai (`StagingAuthorization.scope_level`). O nível `stress` é um
+# superconjunto do `intrusive`: exige mais do cliente (termo de indisponibilidade) e libera o
+# perfil agressivo.
+INTRUSIVE = "intrusive"  # grava dados e faz o alvo sair; sem testes de sobrecarga
+STRESS = "stress"  # tudo do intrusivo + testes de sobrecarga/DoS: a cópia pode cair
 
 # Validade que o cliente pode escolher, em dias, contada da aprovação.
 VALIDITY_DAYS = (7, 30, 90)
@@ -61,6 +69,24 @@ def staging_cleared(
     row = latest(session, target_id)
     return (
         row is not None
+        and is_active(row, now)
+        and bool(hosts)
+        and {h.lower() for h in hosts} == {row.staging_host}
+    )
+
+
+def stress_cleared(
+    session: Session, target_id: str, hosts: list[str], now: datetime | None = None
+) -> bool:
+    """Como `staging_cleared`, mas só quando a liberação é de nível `stress` (resiliência/DoS).
+
+    O agressivo depende disto. Uma cópia aprovada só para o intrusivo (`scope_level = intrusive`)
+    não basta: o termo de sobrecarga, que o cliente aceita que a cópia pode cair, é outro.
+    """
+    row = latest(session, target_id)
+    return (
+        row is not None
+        and row.scope_level == STRESS
         and is_active(row, now)
         and bool(hosts)
         and {h.lower() for h in hosts} == {row.staging_host}

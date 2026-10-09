@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from scanner.sca.manifest import parse_package_lock, parse_requirements
+import pytest
+
+from scanner.sca.manifest import (
+    load_manifest_content,
+    parse_package_lock,
+    parse_requirements,
+)
 from scanner.sca.models import Component
 from scanner.sca.osv import parse_batch_response, parse_vuln
 
@@ -27,6 +33,20 @@ def test_parse_requirements() -> None:
     assert Component("PyPI", "Django", "3.2.0") in comps
     assert Component("PyPI", "requests", "2.25.1") in comps
     assert len(comps) == 2  # 'semver>=1.0' não é versão exata: ignorado
+
+
+def test_load_manifest_content_by_filename() -> None:
+    # requirements.txt a partir do conteúdo (sem arquivo em disco)
+    comps = load_manifest_content("Django==3.2.0\n", "requirements.txt")
+    assert comps == [Component("PyPI", "Django", "3.2.0")]
+    # package-lock.json a partir do conteúdo
+    lock = '{"lockfileVersion":3,"packages":{"node_modules/lodash":{"version":"4.17.4"}}}'
+    assert Component("npm", "lodash", "4.17.4") in load_manifest_content(lock, "package-lock.json")
+
+
+def test_load_manifest_content_rejects_unknown() -> None:
+    with pytest.raises(ValueError, match="não suportado"):
+        load_manifest_content("x", "pom.xml")
 
 
 def test_parse_batch_response_maps_ids_in_order() -> None:

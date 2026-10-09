@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from scanner.common.db import RemediationCache
 from scanner.common.models import Finding
 from scanner.report.catalog import static_remediation
-from scanner.report.llm import RemediationRequest, RemediationWriter
+from scanner.report.llm import RemediationRequest, Writer
 from scanner.report.models import Remediation, RemediationSource
 from scanner.report.prompts import PROMPT_VERSION
 
@@ -26,7 +26,7 @@ def cache_key(rule: str, stack: str, language: str) -> str:
 
 def get_remediation(
     session: Session,
-    writer: RemediationWriter | None,
+    writer: Writer | None,
     f: Finding,
     stack: str,
     language: str,

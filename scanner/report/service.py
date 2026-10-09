@@ -6,6 +6,7 @@ import logging
 
 import anthropic
 import redis
+from openai import OpenAI
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, sessionmaker
@@ -17,7 +18,7 @@ from scanner.common.db import Report as ReportRow
 from scanner.common.models import Finding, StageMessage
 from scanner.common.queue import STREAM_REPORT_READY, make_message, publish
 from scanner.report.builder import build_report
-from scanner.report.llm import RemediationWriter
+from scanner.report.llm import OpenAICompatibleWriter, RemediationWriter, Writer
 from scanner.report.remediation import get_remediation
 from scanner.report.render import render_html, render_pdf
 from scanner.report.stack import detect_stack
@@ -25,14 +26,26 @@ from scanner.report.stack import detect_stack
 log = logging.getLogger(__name__)
 
 
-def make_writer(settings: Settings) -> RemediationWriter | None:
-    key = settings.anthropic_api_key.get_secret_value()
-    if not key:
-        log.warning("ANTHROPIC_API_KEY ausente; remediações virão só do catálogo")
-        return None
-    return RemediationWriter(
-        anthropic.Anthropic(api_key=key), settings.llm_model, settings.llm_effort
-    )
+def make_writer(settings: Settings) -> Writer | None:
+    """Escolhe o provedor do LLM (etapa 6). Sem provedor/chave → None (só catálogo)."""
+    if settings.llm_provider == "anthropic":
+        key = settings.anthropic_api_key.get_secret_value()
+        if not key:
+            log.warning("ANTHROPIC_API_KEY ausente; remediações virão só do catálogo")
+            return None
+        return RemediationWriter(
+            anthropic.Anthropic(api_key=key), settings.llm_model, settings.llm_effort
+        )
+    if settings.llm_provider == "openai_compatible":
+        key = settings.llm_api_key.get_secret_value()
+        if not key or not settings.llm_base_url:
+            log.warning("LLM compatível sem chave/base_url; remediações virão só do catálogo")
+            return None
+        client = OpenAI(api_key=key, base_url=settings.llm_base_url)
+        log.info("LLM compatível ativo", extra={"model": settings.llm_model})
+        return OpenAICompatibleWriter(client, settings.llm_model)
+    log.info("LLM desligado (provider=none); remediações virão do catálogo")
+    return None
 
 
 def handle(
@@ -40,7 +53,7 @@ def handle(
     msg: StageMessage,
     settings: Settings,
     r: redis.Redis,
-    writer: RemediationWriter | None,
+    writer: Writer | None,
     sessions: sessionmaker,  # type: ignore[type-arg]
 ) -> None:
     check_authorized(session, msg)

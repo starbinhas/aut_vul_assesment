@@ -57,18 +57,20 @@ def test_balanced_stays_read_only() -> None:
 
 
 @pytest.mark.parametrize(
-    ("name", "lab", "staging", "ok"),
+    ("name", "lab", "staging", "stress", "ok"),
     [
-        ("balanced", False, False, True),
-        ("intrusive", False, False, False),  # produção
-        ("intrusive", False, True, True),  # cópia autorizada
-        ("intrusive", True, False, True),  # laboratório
-        ("aggressive", False, True, False),  # cópia autorizada não basta para sobrecarga
-        ("aggressive", True, False, True),
+        ("balanced", False, False, False, True),
+        ("intrusive", False, False, False, False),  # produção
+        ("intrusive", False, True, False, True),  # cópia liberada para o intrusivo
+        ("intrusive", False, False, True, True),  # a liberação de resiliência cobre o intrusivo
+        ("intrusive", True, False, False, True),  # laboratório
+        ("aggressive", False, True, False, False),  # cópia só-intrusivo não basta para sobrecarga
+        ("aggressive", False, False, True, True),  # cópia liberada para resiliência
+        ("aggressive", True, False, False, True),  # laboratório
     ],
 )
-def test_clearance_matrix(name, lab, staging, ok) -> None:
-    assert policy.is_cleared(policy.PROFILES[name], lab=lab, staging=staging) is ok
+def test_clearance_matrix(name, lab, staging, stress, ok) -> None:
+    assert policy.is_cleared(policy.PROFILES[name], lab=lab, staging=staging, stress=stress) is ok
 
 
 def _msg(host: str, profile: str) -> StageMessage:
@@ -100,7 +102,13 @@ def test_worker_refuses_intrusive_without_authorization() -> None:
 # --- regra de vigência ------------------------------------------------------------------
 
 
-def _approved(sessions, *, host: str = COPY, until: timedelta = timedelta(days=7)) -> None:
+def _approved(
+    sessions,
+    *,
+    host: str = COPY,
+    until: timedelta = timedelta(days=7),
+    level: str = rules.INTRUSIVE,
+) -> None:
     with sessions.begin() as s:
         s.add(
             Target(
@@ -120,6 +128,7 @@ def _approved(sessions, *, host: str = COPY, until: timedelta = timedelta(days=7
                 staging_target_id="t-copy",
                 staging_host=host,
                 status=rules.APPROVED,
+                scope_level=level,
                 checklist={},
                 valid_days=7,
                 valid_until=datetime.now(UTC) + until,
@@ -146,6 +155,40 @@ def test_revoked_is_not_cleared(env) -> None:
         s.get(StagingAuthorization, "hml-1").status = rules.REVOKED
     with sessions() as s:
         assert not rules.staging_cleared(s, "t-copy", [COPY])
+
+
+# --- nível de resiliência (stress) ------------------------------------------------------
+
+
+def test_intrusive_copy_does_not_clear_stress(env) -> None:
+    # Uma cópia liberada só para o intrusivo nunca libera o agressivo.
+    _, sessions, _ = env
+    _approved(sessions, level=rules.INTRUSIVE)
+    with sessions() as s:
+        assert rules.staging_cleared(s, "t-copy", [COPY])
+        assert not rules.stress_cleared(s, "t-copy", [COPY])
+
+
+def test_stress_copy_clears_both(env) -> None:
+    # A liberação de resiliência cobre o intrusivo e o agressivo, só para o host exato e vigente.
+    _, sessions, _ = env
+    _approved(sessions, level=rules.STRESS)
+    with sessions() as s:
+        assert rules.staging_cleared(s, "t-copy", [COPY])
+        assert rules.stress_cleared(s, "t-copy", [COPY])
+        assert not rules.stress_cleared(s, "t-copy", [COPY, "loja-a.com.br"])  # host a mais
+        later = datetime.now(UTC) + timedelta(days=8)
+        assert not rules.stress_cleared(s, "t-copy", [COPY], now=later)  # venceu
+
+
+def test_worker_aggressive_needs_stress_clearance() -> None:
+    # Cópia só-intrusivo (staging) não basta; a liberação de resiliência (stress) sim.
+    with pytest.raises(ProfileNotAllowedError):
+        resolve_profile(_msg(COPY, "aggressive"), LAB_HOSTS, staging=True)
+    assert (
+        resolve_profile(_msg(COPY, "aggressive"), LAB_HOSTS, staging=True, stress=True).name
+        == "aggressive"
+    )
 
 
 # --- passo a passo na interface ---------------------------------------------------------
@@ -216,6 +259,66 @@ def test_full_flow_unlocks_intrusive_only_on_the_copy(env) -> None:
         assert row.term_sha256 and row.signer_ip and row.valid_days == 30
         start = s.scalars(select(AuditLog).where(AuditLog.action == "scan.start")).one()
         assert start.detail["staging_copy"] is True
+
+
+STRESS_SIGN_FORM = SIGN_FORM | {
+    "confirm": [k for k, _, _ in flow.STRESS_CHECKLIST if k not in flow.OPTIONAL],
+    "level": "stress",
+}
+
+
+def test_full_flow_unlocks_aggressive_only_with_stress_clearance(env) -> None:
+    app, sessions, published = env
+    c = login(app, "ana@loja-a.test")
+    c.post(
+        "/sites/t-a/copia-de-teste",
+        data={"csrf_token": csrf_of(c, "/sites/t-a/copia-de-teste"), "copy_url": COPY},
+    )
+    with sessions() as s:
+        auth_id = s.scalars(select(StagingAuthorization)).one().auth_id
+    token = csrf_of(c, "/sites/t-a/copia-de-teste")
+    c.post(f"/copias-de-teste/{auth_id}/verificar", data={"csrf_token": token})
+    r = c.post(
+        f"/copias-de-teste/{auth_id}/assinar", data={"csrf_token": token, **STRESS_SIGN_FORM}
+    )
+    assert r.status_code == 303, r.text
+    with sessions() as s:
+        assert s.get(StagingAuthorization, auth_id).scope_level == rules.STRESS
+
+    admin = login(app, "admin@pitchy.test")
+    admin.post(
+        f"/admin/copias-de-teste/{auth_id}/decidir",
+        data={"csrf_token": csrf_of(admin, "/admin/copias-de-teste"), "decision": "approve"},
+    )
+    copy_id = "/sites/" + sessions().get(StagingAuthorization, auth_id).staging_target_id
+    assert 'value="aggressive"' in c.get(copy_id).text
+    assert 'value="aggressive"' not in c.get("/sites/t-a").text  # nunca no site oficial
+    r = c.post(
+        f"{copy_id}/scans", data={"csrf_token": csrf_of(c, copy_id), "profile": "aggressive"}
+    )
+    assert r.headers["location"].startswith("/scans/scan-")
+    [(_, msg)] = published
+    assert msg.payload["profile"] == "aggressive" and msg.scope.allowed_hosts == [COPY]
+
+
+def test_intrusive_copy_never_offers_aggressive(env) -> None:
+    # Cópia assinada só para o intrusivo: o agressivo nunca aparece nem é aceito.
+    app, sessions, published = env
+    auth_id = _register_and_sign(app, sessions)  # nível intrusivo (SIGN_FORM sem level)
+    admin = login(app, "admin@pitchy.test")
+    admin.post(
+        f"/admin/copias-de-teste/{auth_id}/decidir",
+        data={"csrf_token": csrf_of(admin, "/admin/copias-de-teste"), "decision": "approve"},
+    )
+    c = login(app, "ana@loja-a.test")
+    copy_id = "/sites/" + sessions().get(StagingAuthorization, auth_id).staging_target_id
+    assert 'value="intrusive"' in c.get(copy_id).text
+    assert 'value="aggressive"' not in c.get(copy_id).text
+    r = c.post(
+        f"{copy_id}/scans", data={"csrf_token": csrf_of(c, copy_id), "profile": "aggressive"}
+    )
+    assert r.headers["location"].endswith("erro=perfil-nao-permitido")
+    assert published == []
 
 
 def test_forged_intrusive_on_production_is_refused(env) -> None:

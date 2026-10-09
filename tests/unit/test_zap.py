@@ -111,6 +111,7 @@ from scanner.web_scan.zap import (  # noqa: E402
     build_login_request,
     extract_token,
     login_response_body,
+    login_response_cookies,
 )
 
 LOGIN = LoginCredential(
@@ -171,6 +172,64 @@ def test_zap_login_returns_header_credential() -> None:
     assert isinstance(cred, HeaderCredential)
     assert cred.name == "Authorization" and cred.value == "Bearer JWT123"
     assert "scanner@lab.local" in captured["raw"]
+
+
+# --- login por formulário (cookie de sessão) ---------------------------------------------
+
+FORM_LOGIN = LoginCredential(
+    login_url="http://dvwa/login.php",
+    email="admin",
+    password="s3nha",
+    mode="form",
+    username_field="username",
+    password_field="password",
+)
+
+
+def test_build_login_request_form_is_urlencoded() -> None:
+    raw = build_login_request(FORM_LOGIN)
+    assert "Content-Type: application/x-www-form-urlencoded" in raw
+    assert "username=admin" in raw and "password=s3nha" in raw
+    assert '"email"' not in raw  # não é JSON
+
+
+def test_login_response_cookies_builds_cookie_header() -> None:
+    sent = [
+        {
+            "responseHeader": (
+                "HTTP/1.1 302 Found\r\n"
+                "Set-Cookie: PHPSESSID=abc123; path=/; HttpOnly\r\n"
+                "Set-Cookie: security=low; path=/\r\n"
+            )
+        }
+    ]
+    assert login_response_cookies(sent) == "PHPSESSID=abc123; security=low"
+
+
+def test_zap_login_form_returns_cookie_credential() -> None:
+    captured = {}
+
+    def send_request(raw, followredirects):
+        captured["raw"] = raw
+        captured["follow"] = followredirects
+        return [{"responseHeader": "HTTP/1.1 302 Found\r\nSet-Cookie: SESS=xyz; path=/\r\n"}]
+
+    z = ZapScanner.__new__(ZapScanner)
+    z.zap = SimpleNamespace(core=SimpleNamespace(send_request=send_request))
+    cred = z.login(FORM_LOGIN)
+    assert isinstance(cred, HeaderCredential)
+    assert cred.name == "Cookie" and cred.value == "SESS=xyz"
+    assert captured["follow"] is False  # form não segue o redirect (capturaria sem o Set-Cookie)
+
+
+def test_zap_login_form_raises_without_cookie() -> None:
+    def send_request(raw, followredirects):
+        return [{"responseHeader": "HTTP/1.1 200 OK\r\n"}]  # sem Set-Cookie = falha de login
+
+    z = ZapScanner.__new__(ZapScanner)
+    z.zap = SimpleNamespace(core=SimpleNamespace(send_request=send_request))
+    with pytest.raises(ZapError):
+        z.login(FORM_LOGIN)
 
 
 # --- credencial: regra do Replacer é idempotente -----------------------------------------
@@ -327,3 +386,40 @@ def test_recovery_stopped_by_operator() -> None:
 def test_recovery_gives_up_after_max_wait() -> None:
     z = FakeZapUp([False])  # caído; max_wait=0 -> desiste na hora
     assert wait_for_target_recovery(z, ["http://t/"], 0, 0, lambda: False) == GAVE_UP
+
+
+# --- exclusão da armadilha de spider (caminho com segmento repetido) -------------------------
+
+import re  # noqa: E402
+
+from scanner.web_scan.zap import REPEATED_SEGMENT_REGEX  # noqa: E402
+
+_TRAP_RX = re.compile(REPEATED_SEGMENT_REGEX)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://juice-shop:3000/assets/assets",
+        "http://juice-shop:3000/assets/assets/assets/public",
+        "http://juice-shop:3000/assets/i18n/assets/public",  # repetição não consecutiva
+        "http://juice-shop:3000/juice-shop/juice-shop/assets",
+    ],
+)
+def test_trap_regex_excludes_repeated_segments(url: str) -> None:
+    assert _TRAP_RX.fullmatch(url) is not None
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://juice-shop:3000/",
+        "http://juice-shop:3000/rest/products/search?q=",
+        "http://juice-shop:3000/rest/user/login",
+        "http://juice-shop:3000/assets/public/images/products",
+        "http://juice-shop:3000/ftp/quarantine/juicy_malware_windows_64.exe.url",
+        "http://juice-shop:3000/api/Challenges/?name=Score%20Board",
+    ],
+)
+def test_trap_regex_keeps_real_routes(url: str) -> None:
+    assert _TRAP_RX.fullmatch(url) is None
