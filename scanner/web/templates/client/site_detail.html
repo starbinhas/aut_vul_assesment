@@ -32,34 +32,34 @@
 
 <ol class="steps" aria-label="Passo a passo do scan">
   <li class="done">
-    <span class="n">1</span>
-    <span class="b"><strong>Site cadastrado</strong> <span class="muted mono small">{{ t.base_url }}</span></span>
+    <div class="t">Site cadastrado</div>
+    <p class="mono small">{{ t.base_url }}</p>
   </li>
   {% if t.verified_at %}
   <li class="done">
-    <span class="n">2</span>
-    <span class="b"><strong>Domínio verificado</strong> <span class="muted">autorização comprovada</span></span>
+    <div class="t">Domínio verificado</div>
+    <p>autorização comprovada</p>
   </li>
   {% else %}
   <li class="now">
-    <span class="n">2</span>
-    <span class="b"><strong>Verifique o domínio</strong> <span class="muted">crie o registro DNS abaixo e clique em verificar — é a sua autorização</span></span>
+    <div class="t">Verifique o domínio</div>
+    <p>crie o registro DNS abaixo e clique em verificar — é a sua autorização</p>
   </li>
   {% endif %}
   {% if not t.verified_at %}
   <li class="pending">
-    <span class="n">3</span>
-    <span class="b"><strong>Rodar o scan</strong> <span class="muted">liberado depois da verificação</span></span>
+    <div class="t">Rodar o scan</div>
+    <p>liberado depois da verificação</p>
   </li>
   {% elif running %}
   <li class="now">
-    <span class="n">3</span>
-    <span class="b"><strong>Scan em andamento</strong> <a href="/scans/{{ running.scan_id }}">acompanhar</a></span>
+    <div class="t">Scan em andamento</div>
+    <p><a href="/scans/{{ running.scan_id }}">acompanhar</a></p>
   </li>
   {% else %}
   <li class="now">
-    <span class="n">3</span>
-    <span class="b"><strong>Rodar o scan</strong> <a href="#novo-scan">escolher o nível e iniciar</a></span>
+    <div class="t">Rodar o scan</div>
+    <p><a href="#novo-scan">escolher o nível e iniciar</a></p>
   </li>
   {% endif %}
 </ol>
