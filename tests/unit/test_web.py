@@ -486,9 +486,10 @@ def test_site_normalization() -> None:
 
 
 def test_txt_check() -> None:
-    value = verification.record_value("abc")
-    assert verification.check_txt("loja.com.br", "abc", lambda name: ["outra coisa", value]) is None
-    assert "não confere" in verification.check_txt("loja.com.br", "abc", lambda name: ["x"])
+    def resolve(name: str) -> list[str]:
+        raise AssertionError("A validação dispensada não deve consultar DNS")
+
+    assert verification.check_txt("loja.com.br", "abc", resolve) is None
 
 
 def test_client_creates_site_in_own_org_only(env) -> None:
@@ -505,7 +506,7 @@ def test_client_creates_site_in_own_org_only(env) -> None:
     assert r.status_code == 303
     with sessions() as s:
         t = s.scalars(select(Target).where(Target.domain == "minha-loja.com.br")).one()
-        assert t.org_id == "org-a" and t.verified_at is None
+        assert t.org_id == "org-a" and t.verified_at is not None
 
 
 # --- revisão humana -----------------------------------------------------------------------

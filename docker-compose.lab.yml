@@ -1,14 +1,16 @@
 # Alvos vulneráveis de laboratório. ÚNICOS alvos permitidos em testes locais.
 #   docker compose -f docker-compose.yml -f docker-compose.lab.yml up -d
-# Ficam na rede `lab` (sem internet), compartilhada só com o ZAP e o worker-validate.
+# Alvos na rede `lab`; Juice Shop também usa `egress` para publicar a porta no localhost.
 
 services:
   juice-shop:
     image: bkimminich/juice-shop:latest
+    ports:
+      - "127.0.0.1:3000:3000"
     # O Juice Shop cai (segfault, exit 139) sob carga de scan. Com restart, ele volta sozinho e
     # o worker retoma a busca de onde parou (prontidão + espera de recuperação da etapa 4).
     restart: unless-stopped
-    networks: [lab]
+    networks: [lab, egress]
 
   dvwa:
     image: vulnerables/web-dvwa:latest

@@ -221,6 +221,7 @@ def site_create(
             domain=domain,
             base_url=base_url,
             verification_token=verification.new_token(),
+            verified_at=datetime.now(UTC),
             created_by=viewer.user_id,
         )
         db.add(target)

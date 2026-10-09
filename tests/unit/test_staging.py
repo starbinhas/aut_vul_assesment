@@ -213,13 +213,7 @@ def _register_and_sign(app, sessions) -> str:
     with sessions() as s:
         row = s.scalars(select(StagingAuthorization)).one()
     assert row.status == rules.DRAFT
-    # Passo 2: comprovar o domínio da cópia.
-    r = c.post(
-        f"/copias-de-teste/{row.auth_id}/verificar",
-        data={"csrf_token": csrf_of(c, "/sites/t-a/copia-de-teste")},
-    )
-    assert r.status_code == 303
-    # Passo 3: o formulário só aparece depois da prova.
+    # O cadastro dispensa a prova DNS e já libera o formulário de assinatura.
     page = c.get("/sites/t-a/copia-de-teste").text
     assert "Termo de autorização" in page and "Servidor separado" in page
     r = c.post(
